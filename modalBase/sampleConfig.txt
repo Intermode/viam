@@ -1,0 +1,18 @@
+{
+  "modules": [
+    {
+      "executable_path": "[PATH TO REPOSITORY]/viam/modal_base_process/modal",
+      "name": "intermode-base"
+    }
+  ],
+  "components": [
+    {
+      "attributes": {},
+      "depends_on": [],
+      "model": "intermode",
+      "name": "viam-base",
+      "namespace": "rdk",
+      "type": "base"
+    }
+  ]
+}
