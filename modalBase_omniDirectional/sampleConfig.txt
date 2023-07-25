@@ -1,0 +1,18 @@
+{
+  "modules": [
+    {
+      "executable_path": "[PATH TO REPOSITORY]/viam/modalBase_omniDirectional/modal",
+      "name": "intermode-base-omnidirectional"
+    }
+  ],
+  "components": [
+    {
+      "attributes": {},
+      "depends_on": [],
+      "model": "intermode",
+      "name": "viam-base",
+      "namespace": "rdk",
+      "type": "base"
+    }
+  ]
+}
