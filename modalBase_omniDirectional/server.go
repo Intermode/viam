@@ -36,7 +36,7 @@ const SPEED_LIMP_HOME = 20.0 // Max speed (throttle) if a limp home condition is
 var model = resource.NewModel("rdk", "builtin", "intermode")
 
 func main() {
-	goutils.ContextualMain(mainWithArgs, golog.NewDevelopmentLogger("intermodeBaseModule"))
+	goutils.ContextualMain(mainWithArgs, golog.NewDevelopmentLogger("intermodeOmniBaseModule"))
 }
 
 // /////////////
@@ -155,7 +155,7 @@ func newBase(name string, logger golog.Logger) (base.Base, error) {
 	}
 
 	cancelCtx, cancel := context.WithCancel(context.Background())
-	iBase := &interModeBase{
+	iBase := &intermodeOmniBase{
 		name:          name,
 		headLightsOn:  true,
 		nextCommandCh: make(chan canbus.Frame),
@@ -393,7 +393,7 @@ func (cmd *driveCommand) toFrame(logger golog.Logger) canbus.Frame {
 	return frame
 }
 
-type interModeBase struct {
+type intermodeOmniBase struct {
 	name                    string
 	headLightsOn            bool
 	isMoving                atomic.Bool
@@ -602,10 +602,10 @@ func receiveThread(
 /*
 	InterMode Base Implementation
 	Every method will set the next command for the publish loop to send over the command bus forever.
-*/
+ */
 
 // MoveStraight moves the base forward the given distance and speed.
-func (base *interModeBase) MoveStraight(ctx context.Context, distanceMm int, mmPerSec float64, extra map[string]interface{}) error {
+func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int, mmPerSec float64, extra map[string]interface{}) error {
 	cmd := driveCommand{
 		Accelerator:   0.5,
 		Brake:         0,
@@ -636,7 +636,7 @@ func (base *interModeBase) MoveStraight(ctx context.Context, distanceMm int, mmP
 }
 
 // Spin spins the base by the given angleDeg and degsPerSec.
-func (base *interModeBase) Spin(ctx context.Context, angleDeg, degsPerSec float64, extra map[string]interface{}) error {
+func (base *intermodeOmniBase) Spin(ctx context.Context, angleDeg, degsPerSec float64, extra map[string]interface{}) error {
 	//TODO: make headlights and hazard persistent parts of the base
 	if err := base.setNextCommand(ctx, &lightCommand{
 		RightTurnSignal: angleDeg < 0,
@@ -676,7 +676,7 @@ func (base *interModeBase) Spin(ctx context.Context, angleDeg, degsPerSec float6
 }
 
 // SetPower sets the linear and angular [-1, 1] drive power.
-func (base *interModeBase) SetPower(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
+func (base *intermodeOmniBase) SetPower(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
 	//TODO: make headlights and hazard persistent parts of the base
 	if err := base.setNextCommand(ctx, &lightCommand{
 		RightTurnSignal: angular.Z < -0.3,
@@ -713,7 +713,7 @@ func (base *interModeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 }
 
 // SetVelocity sets the linear (mmPerSec) and angular (degsPerSec) velocity.
-func (base *interModeBase) SetVelocity(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
+func (base *intermodeOmniBase) SetVelocity(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
 	//TODO: make headlights and hazard persistent parts of the base
 	if err := base.setNextCommand(ctx, &lightCommand{
 		RightTurnSignal: angular.Z < -30,
@@ -752,13 +752,13 @@ var emergencyCmd = driveCommand{
 }
 
 // Stop stops the base. It is assumed the base stops immediately.
-func (base *interModeBase) Stop(ctx context.Context, extra map[string]interface{}) error {
+func (base *intermodeOmniBase) Stop(ctx context.Context, extra map[string]interface{}) error {
 	base.isMoving.Store(false)
 	return base.setNextCommand(ctx, &stopCmd)
 }
 
 // DoCommand executes additional commands beyond the Base{} interface. For this rover that includes door open and close commands.
-func (base *interModeBase) DoCommand(ctx context.Context, cmd map[string]interface{}) (map[string]interface{}, error) {
+func (base *intermodeOmniBase) DoCommand(ctx context.Context, cmd map[string]interface{}) (map[string]interface{}, error) {
 	// TODO: expand this function to change steering/gearing modes.
 	name, ok := cmd["command"]
 	if !ok {
@@ -860,17 +860,17 @@ func (base *interModeBase) DoCommand(ctx context.Context, cmd map[string]interfa
 	}
 }
 
-func (base *interModeBase) IsMoving(ctx context.Context) (bool, error) {
+func (base *intermodeOmniBase) IsMoving(ctx context.Context) (bool, error) {
 	return base.isMoving.Load(), nil
 }
 
 // Close cleanly closes the base.
-func (base *interModeBase) Close() {
+func (base *intermodeOmniBase) Close() {
 	base.cancel()
 	base.activeBackgroundWorkers.Wait()
 }
 
-func (base *interModeBase) setNextCommand(ctx context.Context, cmd modalCommand) error {
+func (base *intermodeOmniBase) setNextCommand(ctx context.Context, cmd modalCommand) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
