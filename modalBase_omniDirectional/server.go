@@ -459,10 +459,11 @@ func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int,
 	base.isMoving.Store(true) // TODO: Replace with feedback info
 
 	var rpmDes = int16(math.Abs(float64(mmPerSec / 360 * 60)))
-	var moveForwards = mmPerSec >= 0
+	var distanceNegative = mmPerSec < 0
+	var speedNegative = distanceMm < 0
 	var encoderValue = distanceMm
 
-	if false == moveForwards {
+	if true == distanceNegative || true == speedNegative {
 		encoderValue *= -1
 	}
 
