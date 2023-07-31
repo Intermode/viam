@@ -467,12 +467,13 @@ func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int,
 	// Speed
 	var speedNegative = distanceMm < 0
 	var rpsDes = mmPerSec / kWheelCircumferenceMm
-	var rpmDes = int16(math.Abs(rpsDes * 60))
+	var rpmDesMagnitude = int16(math.Abs(rpsDes * 60))
 
 	// Distance
 	var distanceNegative = mmPerSec < 0
 	var distanceRev = int(float64(distanceMm) / kWheelCircumferenceMm)
-	var encoderValue = kWheelTicksPerRev * distanceRev
+	var encoderMagnitude = math.Abs(float64(kWheelTicksPerRev * distanceRev))
+	var encoderValue = encoderMagnitude
 
 	if true == distanceNegative || true == speedNegative {
 		encoderValue *= -1
@@ -482,7 +483,7 @@ func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int,
 	var cmd = mecanumCommand{
 		state:   mecanumStates[mecanumStateEnable],
 		mode:    mecanumModes[mecanumModeRelative],
-		rpm:     rpmDes,
+		rpm:     rpmDesMagnitude,
 		current: kDefaultCurrent,
 		encoder: int32(encoderValue),
 	}
@@ -520,21 +521,32 @@ func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int,
 func (base *intermodeOmniBase) Spin(ctx context.Context, angleDeg, degsPerSec float64, extra map[string]interface{}) error {
 	base.isMoving.Store(true) // TODO: Replace with feedback info
 
-	var rpmDes = int16(degsPerSec / 360 * 60)
+	// Speed
+	var speedNegative = degsPerSec < 0
+	var rpmDesMagnitude = int16(math.Abs(degsPerSec / 360 * 60))
+
+	// Angle
+	var angleNegative = angleDeg < 0
+	var encoderMagnitude = math.Abs(angleDeg)
+	var encoderValue = encoderMagnitude
+
+	if true == speedNegative || true == angleNegative {
+		encoderValue *= -1
+	}
 
 	var rightCmd = mecanumCommand{
 		state:   mecanumStates[mecanumStateEnable],
 		mode:    mecanumModes[mecanumModeRelative],
-		rpm:     rpmDes,
+		rpm:     rpmDesMagnitude,
 		current: kDefaultCurrent,
-		encoder: int32(angleDeg),
+		encoder: int32(encoderValue),
 	}
 	var leftCmd = mecanumCommand{
 		state:   mecanumStates[mecanumStateEnable],
 		mode:    mecanumModes[mecanumModeRelative],
-		rpm:     rpmDes,
+		rpm:     rpmDesMagnitude,
 		current: kDefaultCurrent,
-		encoder: -1 * int32(angleDeg),
+		encoder: -1 * int32(encoderValue),
 	}
 
 	var canFrame = (&rightCmd).toFrame(base.logger, kCanIdMotorFr)
