@@ -588,29 +588,35 @@ func (base *intermodeOmniBase) SetPower(ctx context.Context, linear, angular r3.
 	base.isMoving.Store(false) // TODO: Replace with feedback info
 	base.logger.Warnw("SetPower not currently implemented")
 
+	// // Some vector components do not apply to a 2D base
+	// if 0 != linear.Z {
+	// 	base.logger.Warnw("Linear Z command non-zero and has no effect")
+	// }
+	// if 0 != angular.X {
+	// 	base.logger.Warnw("Angular X command non-zero and has no effect")
+	// }
+	// if 0 != angular.Y {
+	// 	base.logger.Warnw("Angular Y command non-zero and has no effect")
+	// }
+
 	return nil
 }
 
 // SetVelocity sets the linear (mmPerSec) and angular (degsPerSec) velocity.
 func (base *intermodeOmniBase) SetVelocity(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
-	// if err := base.setNextCommand(ctx, &lightCommand{
-	// 	RightTurnSignal: angular.Z < -30,
-	// 	LeftTurnSignal:  angular.Z > 30,
-	// 	Hazards:         false,
-	// 	HeadLights:      base.headLightsOn,
-	// }); err != nil {
-	// 	return err
-	// }
+	base.isMoving.Store(false) // TODO: Replace with feedback info
+	base.logger.Warnw("SetVelocity not currently implemented")
 
-	// // if any component of either vector isnt 0, we're moving!
-	// base.isMoving.Store(linear.X != 0 || linear.Y != 0 || linear.Z != 0 || angular.X != 0 || angular.Y != 0 || angular.Z != 0)
-	// return base.setNextCommand(ctx, &driveCommand{
-	// 	Accelerator:   linear.Y,
-	// 	Brake:         0,
-	// 	SteeringAngle: angular.Z * STEERANGLE_MAX,
-	// 	Gear:          gears[gearDrive],
-	// 	SteerMode:     steerModes[steerModeFourWheelDrive],
-	// })
+	// // Some vector components do not apply to a 2D base
+	// if 0 != linear.Z {
+	// 	base.logger.Warnw("Linear Z command non-zero and has no effect")
+	// }
+	// if 0 != angular.X {
+	// 	base.logger.Warnw("Angular X command non-zero and has no effect")
+	// }
+	// if 0 != angular.Y {
+	// 	base.logger.Warnw("Angular Y command non-zero and has no effect")
+	// }
 
 	return nil
 }
