@@ -473,6 +473,7 @@ func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int,
 	var speedNegative = distanceMm < 0
 	var rpsDes = mmPerSec / kWheelCircumferenceMm
 	var rpmDesMagnitude = int16(math.Abs(rpsDes * 60))
+	rpmDesMagnitude = int16(math.Min(float64(rpmDesMagnitude), kLimitSpeedMaxRpm))
 
 	// Distance
 	var distanceNegative = mmPerSec < 0
@@ -529,6 +530,7 @@ func (base *intermodeOmniBase) Spin(ctx context.Context, angleDeg, degsPerSec fl
 	// Speed
 	var speedNegative = degsPerSec < 0
 	var rpmDesMagnitude = int16(math.Abs(degsPerSec / 360 * 60))
+	rpmDesMagnitude = int16(math.Min(float64(rpmDesMagnitude), kLimitSpeedMaxRpm))
 
 	// Angle
 	var angleNegative = angleDeg < 0
