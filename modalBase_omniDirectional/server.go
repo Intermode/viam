@@ -89,8 +89,19 @@ func telemSet(key string, value interface{}) {
 
 const (
 	//	channel         = "can1"
-	channel         = "vcan0"
-	kDefaultCurrent = 5 // Used for straight and spin commands
+	channel = "vcan0"
+
+	// Wheel properties
+	kWheelDiameterMm      float64 = 152.4
+	kWheelCircumferenceMm float64 = 2 * math.Pi * kWheelDiameterMm
+	kWheelEncoderBits     int     = 12
+	kWheelTicksPerRev     int     = 1 << kWheelEncoderBits
+
+	// Limits and defaults
+	kLimitCurrentMax  = 5                                                        // Maximum motor current
+	kLimitSpeedMaxKph = 2.5                                                      // Max speed in KPH
+	kLimitSpeedMaxRpm = kLimitSpeedMaxKph * 1000000 / kWheelCircumferenceMm / 60 // Max speed in RPM
+	kDefaultCurrent   = kLimitCurrentMax                                         // Used for straight and spin commands
 
 	telemGearDesired   = "desired_gear"
 	telemSpeed         = "speed"
@@ -120,12 +131,6 @@ const (
 	kCanIdTelemWheelSpeedId   uint32 = 0x241
 	kCanIdTelemBatteryPowerId uint32 = 0x250
 	kCanIdTelemBatteryStateId uint32 = 0x251
-
-	// Wheel properties
-	kWheelDiameterMm      float64 = 152.4
-	kWheelCircumferenceMm float64 = 2 * math.Pi * kWheelDiameterMm
-	kWheelEncoderBits     int     = 12
-	kWheelTicksPerRev     int     = 1 << kWheelEncoderBits
 )
 
 var (
@@ -578,38 +583,8 @@ func (base *intermodeOmniBase) Spin(ctx context.Context, angleDeg, degsPerSec fl
 
 // SetPower sets the linear and angular [-1, 1] drive power.
 func (base *intermodeOmniBase) SetPower(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
-	// if err := base.setNextCommand(ctx, &lightCommand{
-	// 	RightTurnSignal: angular.Z < -0.3,
-	// 	LeftTurnSignal:  angular.Z > 0.3,
-	// 	Hazards:         false,
-	// 	HeadLights:      base.headLightsOn,
-	// }); err != nil {
-	// 	return err
-	// }
-
-	// var accel float64 = 0
-	// var brake float64 = 0
-	// var ok = false
-	// var gearDesired byte = 0x0
-	// {
-	// 	// If the desired gear got corrupted, default to emergency stop.
-	// 	gearDesired, ok = telemGet(telemGearDesired).(byte)
-	// 	if !ok {
-	// 		gearDesired = gears[gearEmergencyStop]
-	// 	}
-
-	// 	accel = linear.Y
-	// 	brake = linear.X
-
-	// 	base.isMoving.Store(telemGet(telemSpeed) != 0)
-	// }
-	// return base.setNextCommand(ctx, &driveCommand{
-	// 	Accelerator:   accel,
-	// 	Brake:         brake,
-	// 	SteeringAngle: angular.Z * STEERANGLE_MAX,
-	// 	Gear:          gearDesired,
-	// 	SteerMode:     steerModes[steerModeFourWheelDrive],
-	// })
+	base.isMoving.Store(false) // TODO: Replace with feedback info
+	base.logger.Warnw("SetPower not currently implemented")
 
 	return nil
 }
