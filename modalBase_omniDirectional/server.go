@@ -692,6 +692,35 @@ func (base *intermodeOmniBase) IsMoving(ctx context.Context) (bool, error) {
 
 // Close cleanly closes the base.
 func (base *intermodeOmniBase) Close() {
+	// Disable the wheels
+	var cmd = mecanumCommand{
+		state:   mecanumStates[mecanumStateDisable],
+		mode:    mecanumModes[mecanumModeSpeed],
+		rpm:     0,
+		current: kDefaultCurrent,
+		encoder: 0,
+	}
+
+	var canFrame = (&cmd).toFrame(base.logger, kCanIdMotorFr)
+	if _, err := base.canTxSocket.Send(canFrame); err != nil {
+		base.logger.Errorw("close command TX error", "error", err)
+	}
+
+	canFrame = (&cmd).toFrame(base.logger, kCanIdMotorFl)
+	if _, err := base.canTxSocket.Send(canFrame); err != nil {
+		base.logger.Errorw("close command TX error", "error", err)
+	}
+
+	canFrame = (&cmd).toFrame(base.logger, kCanIdMotorRr)
+	if _, err := base.canTxSocket.Send(canFrame); err != nil {
+		base.logger.Errorw("close command TX error", "error", err)
+	}
+
+	canFrame = (&cmd).toFrame(base.logger, kCanIdMotorRl)
+	if _, err := base.canTxSocket.Send(canFrame); err != nil {
+		base.logger.Errorw("close command TX error", "error", err)
+	}
+
 	base.cancel()
 	base.activeBackgroundWorkers.Wait()
 }
