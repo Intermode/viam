@@ -88,8 +88,9 @@ func telemSet(key string, value interface{}) {
 // 									// Presently changed based off of received command style
 
 const (
+	//	channel         = "can1"
 	channel         = "vcan0"
-	kDefaultCurrent = 10 // Used for straight and spin commands
+	kDefaultCurrent = 5 // Used for straight and spin commands
 
 	telemGearDesired   = "desired_gear"
 	telemSpeed         = "speed"
@@ -457,7 +458,13 @@ var (
 func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int, mmPerSec float64, extra map[string]interface{}) error {
 	base.isMoving.Store(true) // TODO: Replace with feedback info
 
-	var rpmDes = int16(mmPerSec / 360 * 60)
+	var rpmDes = int16(math.Abs(float64(mmPerSec / 360 * 60)))
+	var moveForwards = mmPerSec >= 0
+	var encoderValue = distanceMm
+
+	if false == moveForwards {
+		encoderValue *= -1
+	}
 
 	// TODO: Actually rotate degrees
 	var cmd = mecanumCommand{
@@ -465,7 +472,7 @@ func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int,
 		mode:    mecanumModes[mecanumModeRelative],
 		rpm:     rpmDes,
 		current: kDefaultCurrent,
-		encoder: int32(distanceMm),
+		encoder: int32(encoderValue),
 	}
 
 	var canFrame = (&cmd).toFrame(base.logger, kCanIdMotorFr)
