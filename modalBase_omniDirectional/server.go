@@ -120,6 +120,12 @@ const (
 	kCanIdTelemWheelSpeedId   uint32 = 0x241
 	kCanIdTelemBatteryPowerId uint32 = 0x250
 	kCanIdTelemBatteryStateId uint32 = 0x251
+
+	// Wheel properties
+	kWheelDiameterMm      float64 = 152.4
+	kWheelCircumferenceMm float64 = 2 * math.Pi * kWheelDiameterMm
+	kWheelEncoderBits     int     = 12
+	kWheelTicksPerRev     int     = 1 << kWheelEncoderBits
 )
 
 var (
@@ -458,10 +464,15 @@ var (
 func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int, mmPerSec float64, extra map[string]interface{}) error {
 	base.isMoving.Store(true) // TODO: Replace with feedback info
 
-	var rpmDes = int16(math.Abs(float64(mmPerSec / 360 * 60)))
-	var distanceNegative = mmPerSec < 0
+	// Speed
 	var speedNegative = distanceMm < 0
-	var encoderValue = distanceMm
+	var rpsDes = mmPerSec / kWheelCircumferenceMm
+	var rpmDes = int16(math.Abs(rpsDes * 60))
+
+	// Distance
+	var distanceNegative = mmPerSec < 0
+	var distanceRev = int(float64(distanceMm) / kWheelCircumferenceMm)
+	var encoderValue = kWheelTicksPerRev * distanceRev
 
 	if true == distanceNegative || true == speedNegative {
 		encoderValue *= -1
