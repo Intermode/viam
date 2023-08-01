@@ -476,13 +476,13 @@ func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int,
 	base.isMoving.Store(true) // TODO: Replace with feedback info
 
 	// Speed
-	var speedNegative = distanceMm < 0
+	var speedNegative = mmPerSec < 0
 	var rpsDes = mmPerSec / kWheelCircumferenceMm
 	var rpmDesMagnitude = int16(math.Abs(rpsDes * 60))
 	rpmDesMagnitude = int16(math.Min(float64(rpmDesMagnitude), kLimitSpeedMaxRpm))
 
 	// Distance
-	var distanceNegative = mmPerSec < 0
+	var distanceNegative = distanceMm < 0
 	var distanceRev = int(float64(distanceMm) / kWheelCircumferenceMm)
 	var encoderMagnitude = math.Abs(float64(kWheelTicksPerRev * distanceRev))
 	var encoderValue = encoderMagnitude
