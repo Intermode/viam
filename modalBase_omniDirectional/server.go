@@ -94,14 +94,16 @@ const (
 	// Vehicle properties
 	kVehicleWheelbaseMm  = 709.684
 	kVehicleTrackwidthMm = 528.580
-	// Wheel revolutions to vehicle rotations
-	kWheelRev2VehicleRot = (kVehicleWheelbaseMm + kVehicleTrackwidthMm) / kWheelRadiusMm
+	kVehicleSeparation   = (kVehicleWheelbaseMm + kVehicleTrackwidthMm) / 2
 
 	// Wheel properties
 	kWheelRadiusMm        float64 = 76.2
 	kWheelCircumferenceMm float64 = 2 * math.Pi * kWheelRadiusMm
 	kWheelEncoderBits     int     = 12
 	kWheelTicksPerRev     int     = 1 << kWheelEncoderBits
+
+	// Wheel revolutions to vehicle rotations
+	kWheelRev2VehicleRot = (kVehicleWheelbaseMm + kVehicleTrackwidthMm) / kWheelRadiusMm
 
 	// Limits and defaults
 	kLimitCurrentMax  = 5                                                        // Maximum motor current
@@ -613,16 +615,58 @@ func (base *intermodeOmniBase) SetVelocity(ctx context.Context, linear, angular 
 	base.isMoving.Store(false) // TODO: Replace with feedback info
 	base.logger.Warnw("SetVelocity not currently implemented")
 
-	// // Some vector components do not apply to a 2D base
-	// if 0 != linear.Z {
-	// 	base.logger.Warnw("Linear Z command non-zero and has no effect")
-	// }
-	// if 0 != angular.X {
-	// 	base.logger.Warnw("Angular X command non-zero and has no effect")
-	// }
-	// if 0 != angular.Y {
-	// 	base.logger.Warnw("Angular Y command non-zero and has no effect")
-	// }
+	// Some vector components do not apply to a 2D base
+	if 0 != linear.Z {
+		base.logger.Warnw("Linear Z command non-zero and has no effect")
+	}
+	if 0 != angular.X {
+		base.logger.Warnw("Angular X command non-zero and has no effect")
+	}
+	if 0 != angular.Y {
+		base.logger.Warnw("Angular Y command non-zero and has no effect")
+	}
+
+	var rpmDesFr, rpmDesFl, rpmDesRr, rpmDesRl float64
+	var rpmDesX = linear.X / kWheelCircumferenceMm * 60
+	var rpmDesY = linear.Y / kWheelCircumferenceMm * 60
+	var rpmDesSpin = angular.Z / 360 * 60 * kWheelRev2VehicleRot
+
+	rpmDesFr = (rpmDesX + rpmDesY + kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
+	rpmDesFl = (rpmDesX - rpmDesY - kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
+	rpmDesRr = (rpmDesX - rpmDesY + kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
+	rpmDesRl = (rpmDesX + rpmDesY - kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
+
+	var baseCmd = mecanumCommand{
+		state:   mecanumStates[mecanumStateEnable],
+		mode:    mecanumModes[mecanumModeSpeed],
+		current: kDefaultCurrent,
+		encoder: 0,
+	}
+	var frCmd, flCmd, rrCmd, rlCmd = baseCmd, baseCmd, baseCmd, baseCmd
+	frCmd.rpm = int16(rpmDesFr)
+	flCmd.rpm = int16(rpmDesFl)
+	rrCmd.rpm = int16(rpmDesRr)
+	rlCmd.rpm = int16(rpmDesRl)
+
+	var canFrame = (&frCmd).toFrame(base.logger, kCanIdMotorFr)
+	if _, err := base.canTxSocket.Send(canFrame); err != nil {
+		base.logger.Errorw("spin command TX error", "error", err)
+	}
+
+	canFrame = (&flCmd).toFrame(base.logger, kCanIdMotorFl)
+	if _, err := base.canTxSocket.Send(canFrame); err != nil {
+		base.logger.Errorw("spin command TX error", "error", err)
+	}
+
+	canFrame = (&rrCmd).toFrame(base.logger, kCanIdMotorRr)
+	if _, err := base.canTxSocket.Send(canFrame); err != nil {
+		base.logger.Errorw("spin command TX error", "error", err)
+	}
+
+	canFrame = (&rlCmd).toFrame(base.logger, kCanIdMotorRl)
+	if _, err := base.canTxSocket.Send(canFrame); err != nil {
+		base.logger.Errorw("spin command TX error", "error", err)
+	}
 
 	return nil
 }
