@@ -612,8 +612,7 @@ func (base *intermodeOmniBase) SetPower(ctx context.Context, linear, angular r3.
 
 // SetVelocity sets the linear (mmPerSec) and angular (degsPerSec) velocity.
 func (base *intermodeOmniBase) SetVelocity(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
-	base.isMoving.Store(false) // TODO: Replace with feedback info
-	base.logger.Warnw("SetVelocity not currently implemented")
+	base.isMoving.Store(true) // TODO: Replace with feedback info
 
 	// Some vector components do not apply to a 2D base
 	if 0 != linear.Z {
