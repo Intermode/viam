@@ -91,9 +91,15 @@ const (
 	//	channel         = "can1"
 	channel = "vcan0"
 
+	// Vehicle properties
+	kVehicleWheelbaseMm  = 709.684
+	kVehicleTrackwidthMm = 528.580
+	// Wheel revolutions to vehicle rotations
+	kWheelRev2VehicleRot = (kVehicleWheelbaseMm + kVehicleTrackwidthMm) / kWheelRadiusMm
+
 	// Wheel properties
-	kWheelDiameterMm      float64 = 152.4
-	kWheelCircumferenceMm float64 = 2 * math.Pi * kWheelDiameterMm
+	kWheelRadiusMm        float64 = 76.2
+	kWheelCircumferenceMm float64 = 2 * math.Pi * kWheelRadiusMm
 	kWheelEncoderBits     int     = 12
 	kWheelTicksPerRev     int     = 1 << kWheelEncoderBits
 
@@ -529,12 +535,12 @@ func (base *intermodeOmniBase) Spin(ctx context.Context, angleDeg, degsPerSec fl
 
 	// Speed
 	var speedNegative = degsPerSec < 0
-	var rpmDesMagnitude = int16(math.Abs(degsPerSec / 360 * 60))
-	rpmDesMagnitude = int16(math.Min(float64(rpmDesMagnitude), kLimitSpeedMaxRpm))
+	var rpmDesMagnitude = math.Abs(degsPerSec / 360 * 60 * kWheelRev2VehicleRot)
+	rpmDesMagnitude = math.Min(float64(rpmDesMagnitude), kLimitSpeedMaxRpm)
 
 	// Angle
 	var angleNegative = angleDeg < 0
-	var encoderMagnitude = math.Abs(angleDeg)
+	var encoderMagnitude = math.Abs(angleDeg/360*kWheelRev2VehicleRot) * float64(kWheelTicksPerRev)
 	var encoderValue = encoderMagnitude
 
 	if true == speedNegative || true == angleNegative {
@@ -544,14 +550,14 @@ func (base *intermodeOmniBase) Spin(ctx context.Context, angleDeg, degsPerSec fl
 	var rightCmd = mecanumCommand{
 		state:   mecanumStates[mecanumStateEnable],
 		mode:    mecanumModes[mecanumModeRelative],
-		rpm:     rpmDesMagnitude,
+		rpm:     int16(rpmDesMagnitude),
 		current: kDefaultCurrent,
 		encoder: int32(encoderValue),
 	}
 	var leftCmd = mecanumCommand{
 		state:   mecanumStates[mecanumStateEnable],
 		mode:    mecanumModes[mecanumModeRelative],
-		rpm:     rpmDesMagnitude,
+		rpm:     int16(rpmDesMagnitude),
 		current: kDefaultCurrent,
 		encoder: -1 * int32(encoderValue),
 	}
