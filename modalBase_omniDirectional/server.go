@@ -593,19 +593,60 @@ func (base *intermodeOmniBase) Spin(ctx context.Context, angleDeg, degsPerSec fl
 
 // SetPower sets the linear and angular [-1, 1] drive power.
 func (base *intermodeOmniBase) SetPower(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
-	base.isMoving.Store(false) // TODO: Replace with feedback info
-	base.logger.Warnw("SetPower not currently implemented")
+	base.isMoving.Store(true) // TODO: Replace with feedback info
 
-	// // Some vector components do not apply to a 2D base
-	// if 0 != linear.Z {
-	// 	base.logger.Warnw("Linear Z command non-zero and has no effect")
-	// }
-	// if 0 != angular.X {
-	// 	base.logger.Warnw("Angular X command non-zero and has no effect")
-	// }
-	// if 0 != angular.Y {
-	// 	base.logger.Warnw("Angular Y command non-zero and has no effect")
-	// }
+	// Some vector components do not apply to a 2D base
+	if 0 != linear.Z {
+		base.logger.Warnw("Linear Z command non-zero and has no effect")
+	}
+	if 0 != angular.X {
+		base.logger.Warnw("Angular X command non-zero and has no effect")
+	}
+	if 0 != angular.Y {
+		base.logger.Warnw("Angular Y command non-zero and has no effect")
+	}
+
+	var rpmDesFr, rpmDesFl, rpmDesRr, rpmDesRl float64
+	var rpmDesX = linear.X * kLimitSpeedMaxRpm / kWheelCircumferenceMm * 60
+	var rpmDesY = linear.Y * kLimitSpeedMaxRpm / kWheelCircumferenceMm * 60
+	var rpmDesSpin = angular.Z * kLimitSpeedMaxRpm / 360 * 60 * kWheelRev2VehicleRot
+
+	rpmDesFr = (rpmDesX + rpmDesY + kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
+	rpmDesFl = (rpmDesX - rpmDesY - kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
+	rpmDesRr = (rpmDesX - rpmDesY + kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
+	rpmDesRl = (rpmDesX + rpmDesY - kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
+
+	var baseCmd = mecanumCommand{
+		state:   mecanumStates[mecanumStateEnable],
+		mode:    mecanumModes[mecanumModeSpeed],
+		current: kDefaultCurrent,
+		encoder: 0,
+	}
+	var frCmd, flCmd, rrCmd, rlCmd = baseCmd, baseCmd, baseCmd, baseCmd
+	frCmd.rpm = int16(rpmDesFr)
+	flCmd.rpm = int16(rpmDesFl)
+	rrCmd.rpm = int16(rpmDesRr)
+	rlCmd.rpm = int16(rpmDesRl)
+
+	var canFrame = (&frCmd).toFrame(base.logger, kCanIdMotorFr)
+	if _, err := base.canTxSocket.Send(canFrame); err != nil {
+		base.logger.Errorw("spin command TX error", "error", err)
+	}
+
+	canFrame = (&flCmd).toFrame(base.logger, kCanIdMotorFl)
+	if _, err := base.canTxSocket.Send(canFrame); err != nil {
+		base.logger.Errorw("spin command TX error", "error", err)
+	}
+
+	canFrame = (&rrCmd).toFrame(base.logger, kCanIdMotorRr)
+	if _, err := base.canTxSocket.Send(canFrame); err != nil {
+		base.logger.Errorw("spin command TX error", "error", err)
+	}
+
+	canFrame = (&rlCmd).toFrame(base.logger, kCanIdMotorRl)
+	if _, err := base.canTxSocket.Send(canFrame); err != nil {
+		base.logger.Errorw("spin command TX error", "error", err)
+	}
 
 	return nil
 }
