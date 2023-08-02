@@ -88,8 +88,8 @@ func telemSet(key string, value interface{}) {
 // 									// Presently changed based off of received command style
 
 const (
-	// channel         = "can0"
-	channel = "vcan0"
+	channel = "can0"
+	// channel = "vcan0"
 
 	// Vehicle properties
 	kVehicleWheelbaseMm  = 709.684
@@ -97,7 +97,7 @@ const (
 	kVehicleSeparation   = (kVehicleWheelbaseMm + kVehicleTrackwidthMm) / 2
 
 	// Wheel properties
-	kWheelRadiusMm        float64 = 76.2
+	kWheelRadiusMm        float64 = 77
 	kWheelCircumferenceMm float64 = 2 * math.Pi * kWheelRadiusMm
 	kWheelEncoderBits     int     = 12
 	kWheelTicksPerRev     int     = 1 << kWheelEncoderBits
