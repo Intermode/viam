@@ -88,7 +88,7 @@ func telemSet(key string, value interface{}) {
 // 									// Presently changed based off of received command style
 
 const (
-	//	channel         = "can1"
+	// channel         = "can0"
 	channel = "vcan0"
 
 	// Vehicle properties
@@ -485,9 +485,10 @@ func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int,
 
 	// Distance
 	var distanceNegative = distanceMm < 0
-	var distanceRev = int(float64(distanceMm) / kWheelCircumferenceMm)
-	var encoderMagnitude = math.Abs(float64(kWheelTicksPerRev * distanceRev))
-	var encoderValue = encoderMagnitude
+	var distanceRev = float64(distanceMm) / kWheelCircumferenceMm
+	var encoderMagnitude = math.Abs(float64(kWheelTicksPerRev) * distanceRev)
+	// Add 0.5 for rounding purposes
+	var encoderValue = int32(encoderMagnitude + 0.5)
 
 	if true == distanceNegative || true == speedNegative {
 		encoderValue *= -1
@@ -499,7 +500,7 @@ func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int,
 		mode:    mecanumModes[mecanumModeRelative],
 		rpm:     rpmDesMagnitude,
 		current: kDefaultCurrent,
-		encoder: int32(encoderValue),
+		encoder: encoderValue,
 	}
 
 	var canFrame = (&cmd).toFrame(base.logger, kCanIdMotorFr)
