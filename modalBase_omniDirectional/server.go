@@ -683,9 +683,18 @@ func (base *intermodeOmniBase) SetVelocity(ctx context.Context, linear, angular 
 		base.logger.Warnw("Angular Y command non-zero and has no effect")
 	}
 
-	var linearXNormal = math.Min(math.Abs(linear.X/kLimitSpeedMaxRpm), 1)
-	var linearYNormal = math.Min(math.Abs(linear.Y/kLimitSpeedMaxRpm), 1)
-	var angularZNormal = math.Min(math.Abs(angular.Z/kLimitSpeedMaxRpm), 1)
+	var rpmDesMagnitudeLinX = math.Abs(linear.X / kWheelCircumferenceMm * 60)
+	rpmDesMagnitudeLinX = math.Min(float64(rpmDesMagnitudeLinX), kLimitSpeedMaxRpm)
+
+	var rpmDesMagnitudeLinY = math.Abs(linear.Y / kWheelCircumferenceMm * 60)
+	rpmDesMagnitudeLinY = math.Min(float64(rpmDesMagnitudeLinY), kLimitSpeedMaxRpm)
+
+	var rpmDesMagnitudeAngZ = math.Abs(angular.Z / 360 * 60 * kWheelRevPerVehicleRev)
+	rpmDesMagnitudeAngZ = math.Min(rpmDesMagnitudeAngZ, kLimitSpeedMaxRpm)
+
+	var linearXNormal = math.Min(rpmDesMagnitudeLinX/kLimitSpeedMaxRpm, 1)
+	var linearYNormal = math.Min(rpmDesMagnitudeLinY/kLimitSpeedMaxRpm, 1)
+	var angularZNormal = math.Min(rpmDesMagnitudeAngZ/kLimitSpeedMaxRpm, 1)
 
 	var linearMagnitude = math.Sqrt(math.Pow(linearXNormal, 2) + math.Pow(linearYNormal, 2))
 	var linearAngle = math.Atan2(linear.Y, linear.X)
