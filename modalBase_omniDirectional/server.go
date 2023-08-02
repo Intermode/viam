@@ -550,7 +550,7 @@ func (base *intermodeOmniBase) Spin(ctx context.Context, angleDeg, degsPerSec fl
 	// Angle
 	var angleNegative = angleDeg < 0
 	var encoderMagnitude = math.Abs(angleDeg/360*kWheelRevPerVehicleRev) * float64(kWheelTicksPerRev)
-	var encoderValue = encoderMagnitude
+	var encoderValue = int32(encoderMagnitude)
 
 	if true == speedNegative || true == angleNegative {
 		encoderValue *= -1
@@ -561,14 +561,14 @@ func (base *intermodeOmniBase) Spin(ctx context.Context, angleDeg, degsPerSec fl
 		mode:    mecanumModes[mecanumModeRelative],
 		rpm:     int16(rpmDesMagnitude),
 		current: kDefaultCurrent,
-		encoder: int32(encoderValue),
+		encoder: encoderValue,
 	}
 	var leftCmd = mecanumCommand{
 		state:   mecanumStates[mecanumStateEnable],
 		mode:    mecanumModes[mecanumModeRelative],
 		rpm:     int16(rpmDesMagnitude),
 		current: kDefaultCurrent,
-		encoder: -1 * int32(encoderValue),
+		encoder: -1 * encoderValue,
 	}
 
 	var canFrame = (&rightCmd).toFrame(base.logger, kCanIdMotorFr)
