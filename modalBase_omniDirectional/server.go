@@ -102,9 +102,6 @@ const (
 	kWheelEncoderBits     int     = 12
 	kWheelTicksPerRev     int     = 1 << kWheelEncoderBits
 
-	// Wheel revolutions to vehicle rotations
-	kWheelRev2VehicleRot = (kVehicleWheelbaseMm + kVehicleTrackwidthMm) / kWheelRadiusMm
-
 	// Limits and defaults
 	kLimitCurrentMax  = 5                                                        // Maximum motor current
 	kLimitSpeedMaxKph = 2.5                                                      // Max speed in KPH
@@ -156,6 +153,15 @@ var (
 		mecanumModeRelative: 0x02,
 		mecanumModeCurrent:  0x03,
 	}
+
+	// Constants that must be calculated at runtime
+	// Distance wheel tirepatch is from center of vehicle
+	kVehicleTirePatchRadiusMm = math.Sqrt(math.Pow(kVehicleWheelbaseMm/2, 2) + math.Pow(kVehicleTrackwidthMm/2, 2))
+	// Circumference of circle with radius of tirepatch distance from center of vehicle
+	kVehicleTirePatchCircumferenceMm = 2 * math.Pi * kVehicleTirePatchRadiusMm
+
+	// Wheel revolutions to vehicle rotations
+	kWheelRevPerVehicleRev = kVehicleTirePatchCircumferenceMm / kWheelCircumferenceMm
 )
 
 type mecanumCommand struct {
@@ -538,12 +544,12 @@ func (base *intermodeOmniBase) Spin(ctx context.Context, angleDeg, degsPerSec fl
 
 	// Speed
 	var speedNegative = degsPerSec < 0
-	var rpmDesMagnitude = math.Abs(degsPerSec / 360 * 60 * kWheelRev2VehicleRot)
+	var rpmDesMagnitude = math.Abs(degsPerSec / 360 * 60 * kWheelRevPerVehicleRev)
 	rpmDesMagnitude = math.Min(rpmDesMagnitude, kLimitSpeedMaxRpm)
 
 	// Angle
 	var angleNegative = angleDeg < 0
-	var encoderMagnitude = math.Abs(angleDeg/360*kWheelRev2VehicleRot) * float64(kWheelTicksPerRev)
+	var encoderMagnitude = math.Abs(angleDeg/360*kWheelRevPerVehicleRev) * float64(kWheelTicksPerRev)
 	var encoderValue = encoderMagnitude
 
 	if true == speedNegative || true == angleNegative {
@@ -610,7 +616,7 @@ func (base *intermodeOmniBase) SetPower(ctx context.Context, linear, angular r3.
 	var rpmDesFr, rpmDesFl, rpmDesRr, rpmDesRl float64
 	var rpmDesX = linear.X * kLimitSpeedMaxRpm / kWheelCircumferenceMm * 60
 	var rpmDesY = linear.Y * kLimitSpeedMaxRpm / kWheelCircumferenceMm * 60
-	var rpmDesSpin = angular.Z * kLimitSpeedMaxRpm / 360 * 60 * kWheelRev2VehicleRot
+	var rpmDesSpin = angular.Z * kLimitSpeedMaxRpm / 360 * 60 * kWheelRevPerVehicleRev
 
 	rpmDesFr = (rpmDesX + rpmDesY + kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
 	rpmDesFl = (rpmDesX - rpmDesY - kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
@@ -670,7 +676,7 @@ func (base *intermodeOmniBase) SetVelocity(ctx context.Context, linear, angular 
 	var rpmDesFr, rpmDesFl, rpmDesRr, rpmDesRl float64
 	var rpmDesX = linear.X / kWheelCircumferenceMm * 60
 	var rpmDesY = linear.Y / kWheelCircumferenceMm * 60
-	var rpmDesSpin = angular.Z / 360 * 60 * kWheelRev2VehicleRot
+	var rpmDesSpin = angular.Z / 360 * 60 * kWheelRevPerVehicleRev
 
 	rpmDesFr = (rpmDesX + rpmDesY + kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
 	rpmDesFl = (rpmDesX - rpmDesY - kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
