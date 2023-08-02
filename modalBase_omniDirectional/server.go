@@ -102,6 +102,9 @@ const (
 	kWheelEncoderBits     int     = 12
 	kWheelTicksPerRev     int     = 1 << kWheelEncoderBits
 
+	kMagnitudeMaxX float64 = 1
+	kMagnitudeMaxY float64 = 1
+
 	// Limits and defaults
 	kLimitCurrentMax  = 5                                                        // Maximum motor current
 	kLimitSpeedMaxKph = 2.5                                                      // Max speed in KPH
@@ -162,6 +165,9 @@ var (
 
 	// Wheel revolutions to vehicle rotations
 	kWheelRevPerVehicleRev = kVehicleTirePatchCircumferenceMm / kWheelCircumferenceMm
+
+	// Max magnitude of a command in the x-y plane
+	kMaxLinearMagnitude = math.Sqrt(math.Pow(kMagnitudeMaxX, 2) + math.Pow(kMagnitudeMaxX, 2))
 )
 
 type mecanumCommand struct {
@@ -613,15 +619,21 @@ func (base *intermodeOmniBase) SetPower(ctx context.Context, linear, angular r3.
 		base.logger.Warnw("Angular Y command non-zero and has no effect")
 	}
 
-	var rpmDesFr, rpmDesFl, rpmDesRr, rpmDesRl float64
-	var rpmDesX = linear.X * kLimitSpeedMaxRpm / kWheelCircumferenceMm * 60
-	var rpmDesY = linear.Y * kLimitSpeedMaxRpm / kWheelCircumferenceMm * 60
-	var rpmDesSpin = angular.Z * kLimitSpeedMaxRpm / 360 * 60 * kWheelRevPerVehicleRev
+	var linearMagnitude = math.Sqrt(math.Pow(linear.X, 2) + math.Pow(linear.Y, 2)) / kMaxLinearMagnitude
+	var linearAngle = math.Atan2(linear.Y, linear.X)
+	// Angular multiplied by 0.5 because that is the max single-linear-direction magnitude
+	var rpmDesFr = math.Sin(linearAngle-math.Pi/4)*linearMagnitude + angular.Z*0.5
+	var rpmDesFl = math.Sin(linearAngle+math.Pi/4)*linearMagnitude - angular.Z*0.5
+	var rpmDesRr = math.Sin(linearAngle+math.Pi/4)*linearMagnitude + angular.Z*0.5
+	var rpmDesRl = math.Sin(linearAngle-math.Pi/4)*linearMagnitude - angular.Z*0.5
+	var rpmMax = math.Max(math.Max(rpmDesFr, rpmDesFl), math.Max(rpmDesRr, rpmDesRl))
 
-	rpmDesFr = (rpmDesX + rpmDesY + kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
-	rpmDesFl = (rpmDesX - rpmDesY - kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
-	rpmDesRr = (rpmDesX - rpmDesY + kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
-	rpmDesRl = (rpmDesX + rpmDesY - kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
+	if rpmMax > 1 {
+		rpmDesFr /= rpmMax
+		rpmDesFl /= rpmMax
+		rpmDesRr /= rpmMax
+		rpmDesRl /= rpmMax
+	}
 
 	var baseCmd = mecanumCommand{
 		state:   mecanumStates[mecanumStateEnable],
@@ -630,6 +642,7 @@ func (base *intermodeOmniBase) SetPower(ctx context.Context, linear, angular r3.
 		encoder: 0,
 	}
 	var frCmd, flCmd, rrCmd, rlCmd = baseCmd, baseCmd, baseCmd, baseCmd
+	
 	frCmd.rpm = int16(rpmDesFr)
 	flCmd.rpm = int16(rpmDesFl)
 	rrCmd.rpm = int16(rpmDesRr)
