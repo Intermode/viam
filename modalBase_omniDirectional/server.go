@@ -489,8 +489,8 @@ func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int,
 	// Speed
 	var speedNegative = mmPerSec < 0
 	var rpsDes = mmPerSec / kWheelCircumferenceMm
-	var rpmDesMagnitude = int16(math.Abs(rpsDes * 60))
-	rpmDesMagnitude = int16(math.Min(float64(rpmDesMagnitude), kLimitSpeedMaxRpm))
+	var rpmDesMagnitude = math.Abs(rpsDes * 60)
+	rpmDesMagnitude = math.Min(float64(rpmDesMagnitude), kLimitSpeedMaxRpm)
 
 	// Distance
 	var distanceNegative = distanceMm < 0
@@ -507,7 +507,7 @@ func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int,
 	var cmd = mecanumCommand{
 		state:   mecanumStates[mecanumStateEnable],
 		mode:    mecanumModes[mecanumModeRelative],
-		rpm:     rpmDesMagnitude,
+		rpm:     int16(rpmDesMagnitude),
 		current: kDefaultCurrent,
 		encoder: encoderValue,
 	}
