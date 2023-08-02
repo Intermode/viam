@@ -539,7 +539,7 @@ func (base *intermodeOmniBase) Spin(ctx context.Context, angleDeg, degsPerSec fl
 	// Speed
 	var speedNegative = degsPerSec < 0
 	var rpmDesMagnitude = math.Abs(degsPerSec / 360 * 60 * kWheelRev2VehicleRot)
-	rpmDesMagnitude = math.Min(float64(rpmDesMagnitude), kLimitSpeedMaxRpm)
+	rpmDesMagnitude = math.Min(rpmDesMagnitude, kLimitSpeedMaxRpm)
 
 	// Angle
 	var angleNegative = angleDeg < 0
