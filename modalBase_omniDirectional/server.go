@@ -709,10 +709,10 @@ func (base *intermodeOmniBase) SetVelocity(ctx context.Context, linear, angular 
 		encoder: 0,
 	}
 	var frCmd, flCmd, rrCmd, rlCmd = baseCmd, baseCmd, baseCmd, baseCmd
-	frCmd.rpm = int16(rpmDesFr)
-	flCmd.rpm = int16(rpmDesFl)
-	rrCmd.rpm = int16(rpmDesRr)
-	rlCmd.rpm = int16(rpmDesRl)
+	frCmd.rpm = int16(rpmDesFr * kLimitSpeedMaxRpm)
+	flCmd.rpm = int16(rpmDesFl * kLimitSpeedMaxRpm)
+	rrCmd.rpm = int16(rpmDesRr * kLimitSpeedMaxRpm)
+	rlCmd.rpm = int16(rpmDesRl * kLimitSpeedMaxRpm)
 
 	var canFrame = (&frCmd).toFrame(base.logger, kCanIdMotorFr)
 	if _, err := base.canTxSocket.Send(canFrame); err != nil {
