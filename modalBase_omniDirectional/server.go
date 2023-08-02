@@ -165,9 +165,6 @@ var (
 
 	// Wheel revolutions to vehicle rotations
 	kWheelRevPerVehicleRev = kVehicleTirePatchCircumferenceMm / kWheelCircumferenceMm
-
-	// Max magnitude of a command in the x-y plane
-	kMaxLinearMagnitude = math.Sqrt(math.Pow(kMagnitudeMaxX, 2) + math.Pow(kMagnitudeMaxX, 2))
 )
 
 type mecanumCommand struct {
@@ -619,13 +616,13 @@ func (base *intermodeOmniBase) SetPower(ctx context.Context, linear, angular r3.
 		base.logger.Warnw("Angular Y command non-zero and has no effect")
 	}
 
-	var linearMagnitude = math.Sqrt(math.Pow(linear.X, 2) + math.Pow(linear.Y, 2)) / kMaxLinearMagnitude
+	var linearMagnitude = math.Sqrt(math.Pow(linear.X, 2) + math.Pow(linear.Y, 2))
 	var linearAngle = math.Atan2(linear.Y, linear.X)
 	// Angular multiplied by 0.5 because that is the max single-linear-direction magnitude
-	var rpmDesFr = math.Sin(linearAngle-math.Pi/4)*linearMagnitude + angular.Z*0.5
-	var rpmDesFl = math.Sin(linearAngle+math.Pi/4)*linearMagnitude - angular.Z*0.5
-	var rpmDesRr = math.Sin(linearAngle+math.Pi/4)*linearMagnitude + angular.Z*0.5
-	var rpmDesRl = math.Sin(linearAngle-math.Pi/4)*linearMagnitude - angular.Z*0.5
+	var rpmDesFr = math.Min(math.Sin(linearAngle-math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angular.Z
+	var rpmDesFl = math.Min(math.Sin(linearAngle+math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angular.Z
+	var rpmDesRr = math.Min(math.Sin(linearAngle+math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angular.Z
+	var rpmDesRl = math.Min(math.Sin(linearAngle-math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angular.Z
 	var rpmMax = math.Max(math.Max(rpmDesFr, rpmDesFl), math.Max(rpmDesRr, rpmDesRl))
 
 	if rpmMax > 1 {
@@ -642,11 +639,11 @@ func (base *intermodeOmniBase) SetPower(ctx context.Context, linear, angular r3.
 		encoder: 0,
 	}
 	var frCmd, flCmd, rrCmd, rlCmd = baseCmd, baseCmd, baseCmd, baseCmd
-	
-	frCmd.rpm = int16(rpmDesFr*kLimitSpeedMaxRpm)
-	flCmd.rpm = int16(rpmDesFl*kLimitSpeedMaxRpm)
-	rrCmd.rpm = int16(rpmDesRr*kLimitSpeedMaxRpm)
-	rlCmd.rpm = int16(rpmDesRl*kLimitSpeedMaxRpm)
+
+	frCmd.rpm = int16(rpmDesFr * kLimitSpeedMaxRpm)
+	flCmd.rpm = int16(rpmDesFl * kLimitSpeedMaxRpm)
+	rrCmd.rpm = int16(rpmDesRr * kLimitSpeedMaxRpm)
+	rlCmd.rpm = int16(rpmDesRl * kLimitSpeedMaxRpm)
 
 	var canFrame = (&frCmd).toFrame(base.logger, kCanIdMotorFr)
 	if _, err := base.canTxSocket.Send(canFrame); err != nil {
@@ -686,15 +683,24 @@ func (base *intermodeOmniBase) SetVelocity(ctx context.Context, linear, angular 
 		base.logger.Warnw("Angular Y command non-zero and has no effect")
 	}
 
-	var rpmDesFr, rpmDesFl, rpmDesRr, rpmDesRl float64
-	var rpmDesX = linear.X / kWheelCircumferenceMm * 60
-	var rpmDesY = linear.Y / kWheelCircumferenceMm * 60
-	var rpmDesSpin = angular.Z / 360 * 60 * kWheelRevPerVehicleRev
+	var linearXNormal = math.Min(math.Abs(linear.X/kLimitSpeedMaxRpm), 1)
+	var linearYNormal = math.Min(math.Abs(linear.Y/kLimitSpeedMaxRpm), 1)
+	var angularZNormal = math.Min(math.Abs(angular.Z/kLimitSpeedMaxRpm), 1)
 
-	rpmDesFr = (rpmDesX + rpmDesY + kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
-	rpmDesFl = (rpmDesX - rpmDesY - kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
-	rpmDesRr = (rpmDesX - rpmDesY + kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
-	rpmDesRl = (rpmDesX + rpmDesY - kVehicleSeparation*rpmDesSpin) / kWheelRadiusMm
+	var linearMagnitude = math.Sqrt(math.Pow(linearXNormal, 2) + math.Pow(linearYNormal, 2))
+	var linearAngle = math.Atan2(linear.Y, linear.X)
+	var rpmDesFr = math.Min(math.Sin(linearAngle-math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angularZNormal
+	var rpmDesFl = math.Min(math.Sin(linearAngle+math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angularZNormal
+	var rpmDesRr = math.Min(math.Sin(linearAngle+math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angularZNormal
+	var rpmDesRl = math.Min(math.Sin(linearAngle-math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angularZNormal
+	var rpmMax = math.Max(math.Max(rpmDesFr, rpmDesFl), math.Max(rpmDesRr, rpmDesRl))
+
+	if rpmMax > 1 {
+		rpmDesFr /= rpmMax
+		rpmDesFl /= rpmMax
+		rpmDesRr /= rpmMax
+		rpmDesRl /= rpmMax
+	}
 
 	var baseCmd = mecanumCommand{
 		state:   mecanumStates[mecanumStateEnable],
