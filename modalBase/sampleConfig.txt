@@ -1,7 +1,7 @@
 {
   "modules": [
     {
-      "executable_path": "[PATH TO REPOSITORY]/viam/modal_base_process/modal",
+      "executable_path": "[PATH TO REPOSITORY]/viam/modalBase/modal",
       "name": "intermode-base"
     }
   ],
