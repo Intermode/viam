@@ -701,7 +701,7 @@ func (base *interModeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 		// brake = linear.X
 
 		// TODO: Remove when there's an alternative to WASD demos
-		telemSet(telemSpeedLimit, 100)
+		telemSet(telemSpeedLimit, 100.0)
 
 		// TODO: Move to dedicated gear retrieval function and make more similar
 		// 	to a car (e.g., only allow changes when at low speed)
