@@ -696,14 +696,33 @@ func (base *interModeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 	var ok = false
 	var gearDesired byte = 0x0
 	{
+		accel = linear.Y
+		// TODO: Move brake to a Do command
+		// brake = linear.X
+
+		// TODO: Move to dedicated gear retrieval function and make more similar
+		// 	to a car (e.g., only allow changes when at low speed)
 		// If the desired gear got corrupted, default to emergency stop.
 		gearDesired, ok = telemGet(telemGearDesired).(byte)
 		if !ok {
 			gearDesired = gears[gearEmergencyStop]
+		} else {
+			// A negative acceleration means to move the opposite direction of
+			// 	the current gear
+			if 0 > accel {
+				if gears[gearReverse] == gearDesired {
+					gearDesired = gears[gearDrive]
+				} else {	// Default to reverse in case gearDesired is unset
+					gearDesired = gears[gearReverse]
+				}
+			} else {
+				if gears[gearDrive] == gearDesired {
+					gearDesired = gears[gearReverse]
+				} else {	// Default to drive in case gearDesired is unset
+					gearDesired = gears[gearDrive]
+				}
+			}
 		}
-
-		accel = linear.Y
-		brake = linear.X
 
 		base.isMoving.Store(telemGet(telemSpeed) != 0)
 	}
