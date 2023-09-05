@@ -730,10 +730,11 @@ func (base *interModeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 
 		base.isMoving.Store(telemGet(telemSpeed) != 0)
 	}
+	// TODO: Make steer angle actually calculated (const for WASD demo)
 	return base.setNextCommand(ctx, &driveCommand{
 		Accelerator:   accel,
 		Brake:         brake,
-		SteeringAngle: angular.Z * STEERANGLE_MAX,
+		SteeringAngle: 0.75 * STEERANGLE_MAX,
 		Gear:          gearDesired,
 		SteerMode:     steerModes[steerModeFourWheelDrive],
 	})
