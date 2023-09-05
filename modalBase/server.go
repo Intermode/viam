@@ -734,7 +734,7 @@ func (base *interModeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 	return base.setNextCommand(ctx, &driveCommand{
 		Accelerator:   accel,
 		Brake:         brake,
-		SteeringAngle: 0.75 * STEERANGLE_MAX,
+		SteeringAngle: angular.Z / math.Abs(angular.Z) * 0.75 * STEERANGLE_MAX,
 		Gear:          gearDesired,
 		SteerMode:     steerModes[steerModeFourWheelDrive],
 	})
