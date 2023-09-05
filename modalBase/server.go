@@ -776,6 +776,16 @@ var emergencyCmd = driveCommand{
 
 // Stop stops the base. It is assumed the base stops immediately.
 func (base *interModeBase) Stop(ctx context.Context, extra map[string]interface{}) error {
+	// Clear out light state when using WASD UI
+	if err := base.setNextCommand(ctx, &lightCommand{
+		RightTurnSignal: angular.Z < -0.3,
+		LeftTurnSignal:  angular.Z > 0.3,
+		Hazards:         false,
+		HeadLights:      base.headLightsOn,
+	}); err != nil {
+		return err
+	}
+
 	base.isMoving.Store(false)
 	return base.setNextCommand(ctx, &stopCmd)
 }
