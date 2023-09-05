@@ -88,9 +88,10 @@ func telemGetAll() map[string]interface{} {
 // /////////////
 // Fail-Safe //
 // /////////////
+// TODO: Re-enable comms timeout after an alternative to WASD demos is available
 const commsTimeoutIntervalMs = 1000 // If it has been at least this long since last command received, execute containment
 var commsTimeout time.Time
-var commsTimeoutEnable = true		// Enable or disable comms timeout
+var commsTimeoutEnable = false		// Enable or disable comms timeout
 									// Presently changed based off of received command style
 
 func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err error) {
