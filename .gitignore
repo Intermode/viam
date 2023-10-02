@@ -130,3 +130,5 @@ dmypy.json
 
 # Binaries and executables
 modal_base_process/modal
+
+module.tar.gz
