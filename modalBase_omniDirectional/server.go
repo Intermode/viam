@@ -533,7 +533,8 @@ func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int,
 		base.logger.Errorw("straight command TX error", "error", err)
 	}
 
-	if !viamutils.SelectContextOrWait(ctx, time.Duration(distanceMm/int(math.Abs(mmPerSec)))) {
+	var waitSeconds = distanceMm/math.Abs(mmPerSec)
+	if !viamutils.SelectContextOrWait(ctx, time.Duration(waitSeconds * float64(time.Second))) {
 		return ctx.Err()
 	}
 
@@ -594,7 +595,8 @@ func (base *intermodeOmniBase) Spin(ctx context.Context, angleDeg, degsPerSec fl
 		base.logger.Errorw("spin command TX error", "error", err)
 	}
 
-	if !viamutils.SelectContextOrWait(ctx, time.Duration(angleDeg/math.Abs(degsPerSec))) {
+	var waitSeconds = angleDeg/math.Abs(degsPerSec)
+	if !viamutils.SelectContextOrWait(ctx, time.Duration(waitSeconds * float64(time.Second))) {
 		return ctx.Err()
 	}
 
