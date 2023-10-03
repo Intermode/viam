@@ -19,7 +19,6 @@ import (
 
 	"go.viam.com/rdk/components/base"
 	_ "go.viam.com/rdk/components/generic"
-	"go.viam.com/rdk/config"
 	"go.viam.com/rdk/module"
 	"go.viam.com/rdk/resource"
 )
@@ -193,7 +192,7 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 	if err != nil {
 		return err
 	}
-	modalModule.AddModelFromRegistry(ctx, base.Subtype, model)
+	modalModule.AddModelFromRegistry(ctx, base.API, model)
 
 	err = modalModule.Start(ctx)
 	defer modalModule.Close(ctx)
@@ -208,15 +207,15 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 // helper function to add the base's constructor and metadata to the component registry, so that we can later construct it.
 func registerBase() {
 	resource.RegisterComponent(
-		base.Subtype,
+		base.API,
 		model,
-		registry.Component{Constructor: func(
+		resource.Registration[resource.Resource, resource.NoNativeConfig]{Constructor: func(
 			ctx context.Context,
 			deps resource.Dependencies,
-			config config.Component,
+			conf resource.Config,
 			logger golog.Logger,
-		) (interface{}, error) {
-			return newBase(config.Name, logger)
+		) (resource.Resource, error) {
+			return newBase(conf.Name, logger)
 		}})
 }
 
