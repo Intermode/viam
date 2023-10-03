@@ -533,7 +533,7 @@ func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int,
 		base.logger.Errorw("straight command TX error", "error", err)
 	}
 
-	var waitSeconds = distanceMm/math.Abs(mmPerSec)
+	var waitSeconds = float64(distanceMm)/math.Abs(mmPerSec)
 	if !viamutils.SelectContextOrWait(ctx, time.Duration(waitSeconds * float64(time.Second))) {
 		return ctx.Err()
 	}
