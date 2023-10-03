@@ -38,6 +38,7 @@ require (
 	github.com/go-fonts/liberation v0.3.0 // indirect
 	github.com/go-gl/mathgl v1.0.0 // indirect
 	github.com/go-latex/latex v0.0.0-20230307184459-12ec69307ad9 // indirect
+	github.com/go-nlopt/nlopt v0.0.0-20230219125344-443d3362dcb5 // indirect
 	github.com/go-pdf/fpdf v0.8.0 // indirect
 	github.com/go-playground/validator/v10 v10.4.1 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
@@ -71,6 +72,7 @@ require (
 	github.com/lib/pq v1.10.8 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-runewidth v0.0.14 // indirect
+	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/miekg/dns v1.1.53 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
@@ -91,7 +93,6 @@ require (
 	github.com/pion/stun v0.6.1 // indirect
 	github.com/pion/transport/v2 v2.2.1 // indirect
 	github.com/pion/turn/v2 v2.1.2 // indirect
-	github.com/pion/udp/v2 v2.0.1 // indirect
 	github.com/pion/webrtc/v3 v3.2.11 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect

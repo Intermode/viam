@@ -21,6 +21,8 @@ import (
 	_ "go.viam.com/rdk/components/generic"
 	"go.viam.com/rdk/module"
 	"go.viam.com/rdk/resource"
+	"go.viam.com/rdk/components/base/kinematicbase"
+	"go.viam.com/rdk/spatialmath"
 )
 
 // Modal limits
@@ -174,12 +176,13 @@ type mecanumCommand struct {
 }
 
 type intermodeOmniBase struct {
-	name                    string
-	canTxSocket             canbus.Socket
-	isMoving                atomic.Bool
-	activeBackgroundWorkers sync.WaitGroup
-	cancel                  func()
-	logger                  golog.Logger
+    name                    string
+    canTxSocket             canbus.Socket
+    isMoving                atomic.Bool
+    activeBackgroundWorkers sync.WaitGroup
+    cancel                  func()
+    logger                  golog.Logger
+    geometries              []spatialmath.Geometry
 }
 
 type modalCommand interface {
@@ -215,13 +218,17 @@ func registerBase() {
 			conf resource.Config,
 			logger golog.Logger,
 		) (resource.Resource, error) {
-			return newBase(conf.Name, logger)
+			return newBase(conf, logger)
 		}})
 }
 
 // newBase creates a new base that underneath the hood sends canbus frames via
 // a 10ms publishing loop.
-func newBase(name string, logger golog.Logger) (base.Base, error) {
+func newBase(conf resource.Config, logger golog.Logger) (base.Base, error) {
+	geometries, err := kinematicbase.CollisionGeometry(conf.Frame)
+    if err != nil {
+    }
+
 	socketSend, err := canbus.New()
 	if err != nil {
 		return nil, err
@@ -250,12 +257,13 @@ func newBase(name string, logger golog.Logger) (base.Base, error) {
 	}
 
 	_, cancel := context.WithCancel(context.Background())
-	iBase := &intermodeOmniBase{
-		name:        name,
-		canTxSocket: *socketSend,
-		cancel:      cancel,
-		logger:      logger,
-	}
+    iBase := &intermodeOmniBase{
+        name:        conf.Name,
+        canTxSocket: *socketSend,
+        cancel:      cancel,
+        logger:      logger,
+        geometries: geometries,
+    }
 	iBase.isMoving.Store(false)
 
 	// iBase.activeBackgroundWorkers.Add(2)
@@ -792,6 +800,22 @@ func (base *intermodeOmniBase) DoCommand(ctx context.Context, cmd map[string]int
 	default:
 		return nil, fmt.Errorf("no such command: %s", name)
 	}
+}
+
+func (i intermodeOmniBase) Geometries(ctx context.Context, extra map[string]interface{}) ([]spatialmath.Geometry, error) {
+	return i.geometries, nil
+}
+
+func (i *intermodeOmniBase) Name() resource.Name {
+	return resource.Name {
+		API:    	base.API,
+		Remote:	 	"test",
+		Name:		"modal",
+	}
+}
+
+func (i *intermodeOmniBase) Reconfigure(context.Context, resource.Dependencies, resource.Config) error {
+	return nil
 }
 
 func (i *intermodeOmniBase) Properties(ctx context.Context, extra map[string]interface{}) (base.Properties, error) {
