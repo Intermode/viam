@@ -21,7 +21,6 @@ import (
 	_ "go.viam.com/rdk/components/generic"
 	"go.viam.com/rdk/config"
 	"go.viam.com/rdk/module"
-	"go.viam.com/rdk/registry"
 	"go.viam.com/rdk/resource"
 )
 
@@ -208,12 +207,12 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 
 // helper function to add the base's constructor and metadata to the component registry, so that we can later construct it.
 func registerBase() {
-	registry.RegisterComponent(
+	resource.RegisterComponent(
 		base.Subtype,
 		model,
 		registry.Component{Constructor: func(
 			ctx context.Context,
-			deps registry.Dependencies,
+			deps resource.Dependencies,
 			config config.Component,
 			logger golog.Logger,
 		) (interface{}, error) {
@@ -533,7 +532,7 @@ func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int,
 		base.logger.Errorw("straight command TX error", "error", err)
 	}
 
-	var waitSeconds = float64(distanceMm)/math.Abs(mmPerSec)
+	var waitSeconds = float64(distanceMm)/math.Abs(mmPerSec) + 1.5
 	if !viamutils.SelectContextOrWait(ctx, time.Duration(waitSeconds * float64(time.Second))) {
 		return ctx.Err()
 	}
@@ -595,7 +594,7 @@ func (base *intermodeOmniBase) Spin(ctx context.Context, angleDeg, degsPerSec fl
 		base.logger.Errorw("spin command TX error", "error", err)
 	}
 
-	var waitSeconds = angleDeg/math.Abs(degsPerSec)
+	var waitSeconds = angleDeg/math.Abs(degsPerSec) + 1.5
 	if !viamutils.SelectContextOrWait(ctx, time.Duration(waitSeconds * float64(time.Second))) {
 		return ctx.Err()
 	}
@@ -796,12 +795,19 @@ func (base *intermodeOmniBase) DoCommand(ctx context.Context, cmd map[string]int
 	}
 }
 
+func (i *intermodeOmniBase) Properties(ctx context.Context, extra map[string]interface{}) (base.Properties, error) {
+	return base.Properties {
+		WidthMeters:				kVehicleTrackwidthMm/1000.0,
+		WheelCircumferenceMeters:  	kWheelCircumferenceMm/1000.0,
+	}, nil
+}
+
 func (base *intermodeOmniBase) IsMoving(ctx context.Context) (bool, error) {
 	return base.isMoving.Load(), nil
 }
 
 // Close cleanly closes the base.
-func (base *intermodeOmniBase) Close() {
+func (base *intermodeOmniBase) Close(ctx context.Context) error {
 	// Disable the wheels
 	var cmd = mecanumCommand{
 		state:   mecanumStates[mecanumStateDisable],
@@ -833,4 +839,6 @@ func (base *intermodeOmniBase) Close() {
 
 	base.cancel()
 	base.activeBackgroundWorkers.Wait()
+
+	return nil
 }
