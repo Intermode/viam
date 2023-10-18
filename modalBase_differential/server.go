@@ -36,9 +36,9 @@ func main() {
 	goutils.ContextualMain(mainWithArgs, golog.NewDevelopmentLogger("intermodeOmniBaseModule"))
 }
 
-// // /////////////
-// // Telemetry //
-// // /////////////
+///////////////
+// Telemetry //
+///////////////
 var telemetryLock = sync.RWMutex{}
 
 var (
@@ -65,9 +65,82 @@ var commsTimeout time.Time
 var commsTimeoutEnable = false		// Enable or disable comms timeout
 									// Presently changed based off of received command style
 
+
+type (
+	interModeBase = struct {
+		name                    string
+		canTxSocket             canbus.Socket
+		nextCommandCh           chan canbus.Frame
+		isMoving                atomic.Bool
+		activeBackgroundWorkers sync.WaitGroup
+		cancel                  func()
+		logger                  golog.Logger
+		geometries              []spatialmath.Geometry
+	}
+	driveCommand  = struct {
+		Accelerator   float64
+		Brake         float64
+		SteeringAngle float64
+		Gear          byte
+		DriveMode     byte
+		SteerMode     byte
+	}
+	axleCommand = struct {
+		rightSpeed    float64
+		leftSpeed     float64
+		Brake         float64
+		SteeringAngle float64
+	}
+	modalCommand = interface {
+		toFrame(logger golog.Logger) canbus.Frame
+	}
+)
+
+var (
+	gears = map[string]byte{
+		gearPark:          	0,
+		gearReverse:       	1,
+		gearNeutral:       	2,
+		gearDrive:         	3,
+		gearEmergencyStop: 	4,
+	}
+	steerModes = map[string]byte{
+		steerModeFrontWheelSteer: 	0,
+		steerModeRearWheelSteer:  	1,
+		steerModeFourWheelSteer:  	2,
+		steerModeCrabSteering:    	3,
+	}
+	driveModes = map[string]byte{
+		driveModeFourWheelDrive: 	0,
+		driveModeFrontWheelDrive:  	1,
+		driveModeRearWheelDrive:  	2,
+		driveModeIndAped:   		3,
+	}
+
+	emergencyCmd = driveCommand{
+		Accelerator:   	0,
+		Brake:         	1,
+		SteeringAngle: 	0,
+		Gear:          	gears[gearEmergencyStop],
+		DriveMode:	   	driveModes[driveMode4WD],
+		SteerMode:     	steerModes[steerModeFourWheelSteer],
+	}
+	stopCmd = driveCommand{
+		Accelerator:   	0,
+		Brake:         	1,
+		SteeringAngle: 	0,
+		Gear:          	gears[gearPark],
+		DriveMode:	   	driveModes[driveMode4WD],
+		SteerMode:     	steerModes[steerModeFourWheelSteer],
+	}
+)
+
 const (
 	channel = "can0"
 	// channel = "vcan0"
+	
+	// CAN IDs
+	kulCanIdDriveCmd uint32 = 0x220
 
 	// Vehicle properties
 	kVehicleWheelbaseMm  = 709.684
@@ -89,30 +162,7 @@ const (
 	kLimitSpeedMaxRpm = kLimitSpeedMaxKph * 1000000 / kWheelCircumferenceMm / 60 // Max speed in RPM
 	kDefaultCurrent   = kLimitCurrentMax                                         // Used for straight and spin commands
 
-	telemGearDesired   = "desired_gear"
-	telemSpeed         = "speed"
-	telemSpeedLimit    = "speed_limit"
-	telemSteerAngle    = "steer_angle"
-	telemStateOfCharge = "state_of_charge"
-
-	mecanumStateDisable   = "disable"
-	mecanumStateEnable    = "enable"
-	mecanumStateResetErr  = "resetError"
-	mecanumStateResetPos  = "resetPosition"
-	mecanumStateResetCal  = "resetCalibration"
-	mecanumStateCalSensor = "calibrateSensor"
-
-	mecanumModeSpeed    = "speed"
-	mecanumModeAbsolute = "absolute"
-	mecanumModeRelative = "relative"
-	mecanumModeCurrent  = "current"
-
 	kNumBitsPerByte = 8
-
-	kCanIdMotorFr uint32 = 0x0000022A
-	kCanIdMotorFl uint32 = 0x0000022B
-	kCanIdMotorRr uint32 = 0x0000022C
-	kCanIdMotorRl uint32 = 0x0000022D
 
 	kCanIdTelemWheelSpeedId   uint32 = 0x241
 	kCanIdTelemBatteryPowerId uint32 = 0x250
@@ -120,21 +170,6 @@ const (
 )
 
 var (
-	mecanumStates = map[string]byte{
-		mecanumStateDisable:   0x00,
-		mecanumStateEnable:    0x01,
-		mecanumStateResetErr:  0x02,
-		mecanumStateResetPos:  0x03,
-		mecanumStateResetCal:  0x04,
-		mecanumStateCalSensor: 0x05,
-	}
-	mecanumModes = map[string]byte{
-		mecanumModeSpeed:    0x00,
-		mecanumModeAbsolute: 0x01,
-		mecanumModeRelative: 0x02,
-		mecanumModeCurrent:  0x03,
-	}
-
 	// Constants that must be calculated at runtime
 	// Distance wheel tirepatch is from center of vehicle
 	kVehicleTirePatchRadiusMm = math.Sqrt(math.Pow(kVehicleWheelbaseMm/2, 2) + math.Pow(kVehicleTrackwidthMm/2, 2))
@@ -144,28 +179,6 @@ var (
 	// Wheel revolutions to vehicle rotations
 	kWheelRevPerVehicleRev = kVehicleTirePatchCircumferenceMm / kWheelCircumferenceMm
 )
-
-type mecanumCommand struct {
-	state   byte
-	mode    byte
-	rpm     int16
-	current int16
-	encoder int32
-}
-
-type intermodeOmniBase struct {
-    name                    string
-    canTxSocket             canbus.Socket
-    isMoving                atomic.Bool
-    activeBackgroundWorkers sync.WaitGroup
-    cancel                  func()
-    logger                  golog.Logger
-    geometries              []spatialmath.Geometry
-}
-
-type modalCommand interface {
-	toFrame(logger golog.Logger) canbus.Frame
-}
 
 func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err error) {
 	registerBase()
@@ -229,6 +242,7 @@ func newBase(conf resource.Config, logger golog.Logger) (base.Base, error) {
     iBase := &intermodeOmniBase{
         name:        conf.Name,
         canTxSocket: *socketSend,
+		nextCommandCh: make(chan canbus.Frame),
         cancel:      cancel,
         logger:      logger,
         geometries: geometries,
@@ -237,33 +251,49 @@ func newBase(conf resource.Config, logger golog.Logger) (base.Base, error) {
 
 	iBase.activeBackgroundWorkers.Add(1)
 	viamutils.ManagedGo(func() {
-		publishThread(cancelCtx, *socketSend, iBase.nextCommandCh, logger)
+		publishThread(cancelCtx, iBase.canTxSocket, iBase.nextCommandCh, logger)
 	}, iBase.activeBackgroundWorkers.Done)
 
 	return iBase, nil
 }
 
 /*
- * Convert the a mecanum command to a CAN frame
+ * Convert a drive command to a CAN frame
  */
-func (cmd *mecanumCommand) toFrame(logger golog.Logger, canId uint32) canbus.Frame {
+func (cmd *driveCommand) toFrame(logger golog.Logger) canbus.Frame {
 	frame := canbus.Frame{
-		ID:   canId,
+		ID:   kulCanIdDriveCmd,
 		Data: make([]byte, 0, 8),
-		Kind: canbus.EFF,
+		Kind: canbus.SFF,
 	}
-	frame.Data = append(frame.Data, (cmd.state&0x0F)|((cmd.mode&0x0F)<<4))
-	frame.Data = append(frame.Data, byte(cmd.rpm&0xFF))
-	frame.Data = append(frame.Data, byte((cmd.rpm>>8)&0xFF)|byte((cmd.current&0x0F)<<4))
-	frame.Data = append(frame.Data, byte((cmd.current>>4)&0x0FF))
-	frame.Data = append(frame.Data, byte(cmd.encoder&0xFF))
-	frame.Data = append(frame.Data, byte((cmd.encoder>>8)&0xFF))
-	frame.Data = append(frame.Data, byte((cmd.encoder>>16)&0xFF))
-	frame.Data = append(frame.Data, byte((cmd.encoder>>24)&0xFF))
+
+	steeringAngleBytes := make([]byte, 2)
+	binary.LittleEndian.PutUint16(steeringAngleBytes, 0)
+
+	frame.Data = append(frame.Data, calculateAccelAndBrakeBytes(cmd.Accelerator, cmd.Brake)...)
+	frame.Data = append(frame.Data, steeringAngleBytes...)	// Steering hard-coded to 0 as turning is handled by the wheels
+	frame.Data = append(frame.Data, cmd.Gear, cmd.DriveMode, cmd.SteerMode)
 
 	logger.Debugw("frame", "data", frame.Data)
 
 	return frame
+}
+
+/**
+ * Sets the next base CAN command
+ */
+func (base *intermodeBase) setNextCommand(ctx context.Context, cmd modalCommand) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case base.nextCommandCh <- cmd.toFrame(base.logger):
+	}
+
+	return nil
 }
 
 // // publishThread continuously sends the current drive command over the canbus.
@@ -291,255 +321,105 @@ func publishThread(
 			driveFrame = (&emergencyCmd).toFrame(logger)
 		}
 		if _, err := socket.Send(driveFrame); err != nil {
-			logger.Errorw("drive command send error", "error", err)
+			logger.Errorw("Drive command send error", "error", err)
 		}
 	}
 }
 
 /*
- *	The CAN RX support functions were translated from C++ by ChatGPT, so might
- * 		be weird and not stylistically consistent
- */
-func ucGetByteBitMask(byteNum uint8, bitSigLsb uint8, bitSigMsb uint8) uint8 {
-	/*
-	 * Returns a bit mask for a single byte of a CAN payload
-	 *
-	 * Inputs:
-	 * 	`byteNum` : array byte number to make a mask for
-	 * 	`bitSigLsb` : least significant bit for the signal (in the CAN payload)
-	 * 	`bitSigMsb` : most significant bit for the signal (in the CAN payload)
-	 */
-	var bitMaskLsb uint8 = 0 // Least significant bit for the bit mask
-	var bitMaskMsb uint8 = 0 // Most significant bit for the bit mask
-	var bitByteLsb int32 = 0 // Least significant bit for the current byte
-	var bitByteMsb int32 = 0 // Most significant bit for the current byte
-
-	bitByteLsb = int32(byteNum) * kNumBitsPerByte
-	bitByteMsb = (int32(byteNum)+1)*kNumBitsPerByte - 1
-	if int32(bitSigLsb) < bitByteLsb {
-		bitMaskLsb = 0
-	} else {
-		bitMaskLsb = uint8(int32(bitSigLsb) - bitByteLsb)
-	}
-
-	if int32(bitSigMsb) >= bitByteMsb {
-		bitMaskMsb = kNumBitsPerByte - 1
-	} else {
-		bitMaskMsb = uint8(int32(bitSigMsb) - bitByteLsb)
-	}
-
-	return uint8((math.MaxUint8 << (bitMaskMsb + 1)) ^ (math.MaxUint8 << bitMaskLsb))
-}
-
-/*
- * CAN signal definition
- */
-type CanSignal_TypeDef struct {
-	fScalar     float32 // Scalar
-	fOffset     float32 // Offset
-	ucStart     uint8   // Start bit
-	ucLength    uint8   // Length in bits
-	ucLittleEnd uint8   // Endianness
-	ucSigned    uint8   // Signed
-}
-
-// Constructor
-func NewCanSignal_TypeDef(fScalar, fOffset float32, ucStart, ucLength, ucLittleEnd, ucSigned uint8) *CanSignal_TypeDef {
-	return &CanSignal_TypeDef{
-		fScalar:     fScalar,
-		fOffset:     fOffset,
-		ucStart:     ucStart,
-		ucLength:    ucLength,
-		ucLittleEnd: ucLittleEnd,
-		ucSigned:    ucSigned,
-	}
-}
-
-/*
- * Extracts a CAN signal
- *
- * Currently limited to 32-bit signals to avoid casting the entire data
- *  array to a 64 bit number to simplify switch to CAN FD (allows up to 64
- *  data bytes)
- *
- * Caller to cast the signal result to an alternate data type if needed
- *
- * Inputs:
- * 	`pucData` : CAN data array
- * 	`xSignal` : signal configuration data
- */
-func fCanExtractSignal(pucData []uint8, xSignal CanSignal_TypeDef) float32 {
-	var ulRet uint32 = 0      // Return value
-	var fRet float32 = 0      // Float-casted return value
-	var ucByteShift uint8 = 0 // Number of bytes to shift single signal bytes
-
-	// Least significant signal bit
-	var ucBitSigLsb uint8 = xSignal.ucStart
-	// Most significant signal bit
-	//  Reduced by one to account for zero indexing of bits
-	var ucBitSigMsb uint8 = uint8(ucBitSigLsb + xSignal.ucLength - 1)
-	var ucByteStart uint8 = ucBitSigLsb / kNumBitsPerByte // Start byte
-	var ucByteStop uint8 = ucBitSigMsb / kNumBitsPerByte  // Stop byte
-
-	for i := ucByteStart; i <= ucByteStop; i++ {
-		if 0 < xSignal.ucLittleEnd {
-			ucByteShift = uint8(i - ucByteStart)
-		} else { // Big Endian
-			ucByteShift = uint8(ucByteStop - i)
-		}
-
-		ulRet += (uint32(ucGetByteBitMask(i, ucBitSigLsb, ucBitSigMsb)) & uint32(pucData[i])) <<
-			(ucByteShift * kNumBitsPerByte)
-	}
-
-	ulRet >>= ucBitSigLsb - kNumBitsPerByte*ucByteStart
-
-	// If signed, extend the sign bit
-	if 0 < xSignal.ucSigned {
-		if int32(ulRet)&(1<<(ucBitSigMsb-ucByteStart*kNumBitsPerByte)) != 0 {
-			ulRet |= uint32(math.MaxUint32) <<
-				(ucBitSigMsb - ucByteStart*kNumBitsPerByte + 1)
-		}
-		fRet = float32(int32(ulRet))
-	} else {
-		fRet = float32(ulRet)
-	}
-
-	return fRet*xSignal.fScalar + xSignal.fOffset
-}
-
-var (
-	canSignalDriveSteerAngle      = *NewCanSignal_TypeDef(0.0078125, 0, 32, 16, 1, 1)
-	canSignalWheelSpeedFrontLeft  = *NewCanSignal_TypeDef(0.0078125, 0, 0, 16, 1, 1)
-	canSignalWheelSpeedFrontRight = *NewCanSignal_TypeDef(0.0078125, 0, 16, 16, 1, 1)
-	canSignalWheelSpeedRearLeft   = *NewCanSignal_TypeDef(0.0078125, 0, 32, 16, 1, 1)
-	canSignalWheelSpeedRearRight  = *NewCanSignal_TypeDef(0.0078125, 0, 48, 16, 1, 1)
-	canSignalBatteryStateOfCharge = *NewCanSignal_TypeDef(0.1, 0, 0, 16, 1, 0)
-)
-
-/*
-	InterMode Base Implementation
+	Intermode Differential Base Implementation
 	Every method will set the next command for the publish loop to send over the command bus forever.
 */
 
 // MoveStraight moves the base forward the given distance and speed.
-// TODO: Move with the correct units
-func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int, mmPerSec float64, extra map[string]interface{}) error {
-	base.isMoving.Store(true) // TODO: Replace with feedback info
+// TODO: Actually implement for differential. Commented section does a fixed APED that isn't ideal
+func (base *intermodeBase) MoveStraight(ctx context.Context, distanceMm int, mmPerSec float64, extra map[string]interface{}) error {
+	base.logger.Warnw("MoveStraight not implemented")
+	// // Speed
+	// var speedNegative = mmPerSec < 0
+	// var rpsDes = mmPerSec / kWheelCircumferenceMm
+	// var rpmDesMagnitude = math.Abs(rpsDes * 60)
+	// rpmDesMagnitude = math.Min(float64(rpmDesMagnitude), kLimitSpeedMaxRpm)
 
-	// Speed
-	var speedNegative = mmPerSec < 0
-	var rpsDes = mmPerSec / kWheelCircumferenceMm
-	var rpmDesMagnitude = math.Abs(rpsDes * 60)
-	rpmDesMagnitude = math.Min(float64(rpmDesMagnitude), kLimitSpeedMaxRpm)
+	// // Distance
+	// var distanceNegative = distanceMm < 0
+	// var distanceRev = float64(distanceMm) / kWheelCircumferenceMm
+	// var encoderMagnitude = math.Abs(float64(kWheelTicksPerRev) * distanceRev)
+	// // Add 0.5 for rounding purposes
+	// var encoderValue = int32(encoderMagnitude + 0.5)
 
-	// Distance
-	var distanceNegative = distanceMm < 0
-	var distanceRev = float64(distanceMm) / kWheelCircumferenceMm
-	var encoderMagnitude = math.Abs(float64(kWheelTicksPerRev) * distanceRev)
-	// Add 0.5 for rounding purposes
-	var encoderValue = int32(encoderMagnitude + 0.5)
+	// cmd := driveCommand{
+	// 	Accelerator:   0.5,
+	// 	Brake:         0,
+	// 	SteeringAngle: 0,
+	// 	Gear:          gears[gearDrive],
+	// 	DriveMode:     driveModes[driveModeIndAped],
+	// 	SteerMode:     steerModes[steerModeFourWheelSteer],
+	// }
 
-	if true == distanceNegative || true == speedNegative {
-		encoderValue *= -1
-	}
+	// if true == distanceNegative || true == speedNegative {
+	// 	cmd.Gear = gears[gearReverse]
+	// }
 
-	// TODO: Actually rotate degrees
-	var cmd = mecanumCommand{
-		state:   mecanumStates[mecanumStateEnable],
-		mode:    mecanumModes[mecanumModeRelative],
-		rpm:     int16(rpmDesMagnitude),
-		current: kDefaultCurrent,
-		encoder: encoderValue,
-	}
+	// if err := base.setNextCommand(ctx, &cmd); err != nil {
+	// 	return err
+	// }
+	// base.isMoving.Store(true) // TODO: Replace with feedback info
 
-	var canFrame = (&cmd).toFrame(base.logger, kCanIdMotorFr)
-	base.logger.Debugw("frame", "data", canFrame.Data)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("straight command TX error", "error", err)
-	}
+	// defer func() {
+	// 	base.setNextCommand(ctx, &stopCmd)
+	// 	base.isMoving.Store(false)
+	// }()
 
-	canFrame = (&cmd).toFrame(base.logger, kCanIdMotorRr)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("straight command TX error", "error", err)
-	}
-
-	canFrame = (&cmd).toFrame(base.logger, kCanIdMotorFl)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("straight command TX error", "error", err)
-	}
-
-	canFrame = (&cmd).toFrame(base.logger, kCanIdMotorRl)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("straight command TX error", "error", err)
-	}
-
-	var waitSeconds = float64(distanceMm)/math.Abs(mmPerSec) + 1.5
-	if !viamutils.SelectContextOrWait(ctx, time.Duration(waitSeconds * float64(time.Second))) {
-		return ctx.Err()
-	}
+	// var waitSeconds = float64(distanceMm)/math.Abs(mmPerSec) + 1.5
+	// if !viamutils.SelectContextOrWait(ctx, time.Duration(waitSeconds * float64(time.Second))) {
+	// 	return ctx.Err()
+	// }
 
 	return nil
 }
 
 // Spin spins the base by the given angleDeg and degsPerSec.
-// TODO: Move with the correct units
-func (base *intermodeOmniBase) Spin(ctx context.Context, angleDeg, degsPerSec float64, extra map[string]interface{}) error {
-	base.isMoving.Store(true) // TODO: Replace with feedback info
+// TODO: Actually implement for differential. Commented section does a fixed APED that isn't ideal
+func (base *intermodeBase) Spin(ctx context.Context, angleDeg, degsPerSec float64, extra map[string]interface{}) error {
+	base.logger.Warnw("Spin not implemented")
+	// // Speed
+	// var speedNegative = degsPerSec < 0
+	// var rpmDesMagnitude = math.Abs(degsPerSec / 360 * 60 * kWheelRevPerVehicleRev)
+	// rpmDesMagnitude = math.Min(rpmDesMagnitude, kLimitSpeedMaxRpm)
 
-	// Speed
-	var speedNegative = degsPerSec < 0
-	var rpmDesMagnitude = math.Abs(degsPerSec / 360 * 60 * kWheelRevPerVehicleRev)
-	rpmDesMagnitude = math.Min(rpmDesMagnitude, kLimitSpeedMaxRpm)
+	// // Angle
+	// var angleNegative = angleDeg < 0
+	// var encoderMagnitude = math.Abs(angleDeg/360*kWheelRevPerVehicleRev) * float64(kWheelTicksPerRev)
+	// var encoderValue = int32(encoderMagnitude)
 
-	// Angle
-	var angleNegative = angleDeg < 0
-	var encoderMagnitude = math.Abs(angleDeg/360*kWheelRevPerVehicleRev) * float64(kWheelTicksPerRev)
-	var encoderValue = int32(encoderMagnitude)
+	// cmd := driveCommand{
+	// 	Accelerator:   0.5,
+	// 	Brake:         0,
+	// 	SteeringAngle: 0,
+	// 	Gear:          gears[gearDrive],
+	// 	DriveMode:     driveModes[driveModeIndAped],
+	// 	SteerMode:     steerModes[steerModeFourWheelSteer],
+	// }
 
-	if true == speedNegative || true == angleNegative {
-		encoderValue *= -1
-	}
+	// if true == distanceNegative || true == speedNegative {
+	// 	cmd.Gear = gears[gearReverse]
+	// }
 
-	var rightCmd = mecanumCommand{
-		state:   mecanumStates[mecanumStateEnable],
-		mode:    mecanumModes[mecanumModeRelative],
-		rpm:     int16(rpmDesMagnitude),
-		current: kDefaultCurrent,
-		encoder: encoderValue,
-	}
-	var leftCmd = mecanumCommand{
-		state:   mecanumStates[mecanumStateEnable],
-		mode:    mecanumModes[mecanumModeRelative],
-		rpm:     int16(rpmDesMagnitude),
-		current: kDefaultCurrent,
-		encoder: -1 * encoderValue,
-	}
+	// if err := base.setNextCommand(ctx, &cmd); err != nil {
+	// 	return err
+	// }
+	// base.isMoving.Store(true) // TODO: Replace with feedback info
 
-	var canFrame = (&rightCmd).toFrame(base.logger, kCanIdMotorFr)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("spin command TX error", "error", err)
-	}
+	// defer func() {
+	// 	base.setNextCommand(ctx, &stopCmd)
+	// 	base.isMoving.Store(false)
+	// }()
 
-	canFrame = (&rightCmd).toFrame(base.logger, kCanIdMotorRr)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("spin command TX error", "error", err)
-	}
-
-	canFrame = (&leftCmd).toFrame(base.logger, kCanIdMotorFl)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("spin command TX error", "error", err)
-	}
-
-	canFrame = (&leftCmd).toFrame(base.logger, kCanIdMotorRl)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("spin command TX error", "error", err)
-	}
-
-	var waitSeconds = angleDeg/math.Abs(degsPerSec) + 1.5
-	if !viamutils.SelectContextOrWait(ctx, time.Duration(waitSeconds * float64(time.Second))) {
-		return ctx.Err()
-	}
+	// var waitSeconds = float64(distanceMm)/math.Abs(mmPerSec) + 1.5
+	// if !viamutils.SelectContextOrWait(ctx, time.Duration(waitSeconds * float64(time.Second))) {
+	// 	return ctx.Err()
+	// }
 
 	return nil
 }
@@ -549,6 +429,9 @@ func (base *intermodeOmniBase) SetPower(ctx context.Context, linear, angular r3.
 	base.isMoving.Store(true) // TODO: Replace with feedback info
 
 	// Some vector components do not apply to a 2D base
+	if 0 != linear.Y {
+		base.logger.Warnw("Linear Y command non-zero and has no effect")
+	}
 	if 0 != linear.Z {
 		base.logger.Warnw("Linear Z command non-zero and has no effect")
 	}
@@ -559,13 +442,12 @@ func (base *intermodeOmniBase) SetPower(ctx context.Context, linear, angular r3.
 		base.logger.Warnw("Angular Y command non-zero and has no effect")
 	}
 
-	var linearMagnitude = math.Sqrt(math.Pow(linear.X, 2) + math.Pow(linear.Y, 2))
-	var linearAngle = math.Atan2(linear.Y, linear.X)
+	var linearMagnitude = linear.X
 	// Angular multiplied by 0.5 because that is the max single-linear-direction magnitude
-	var rpmDesFr = math.Min(math.Sin(linearAngle-math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angular.Z
-	var rpmDesFl = math.Min(math.Sin(linearAngle+math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angular.Z
-	var rpmDesRr = math.Min(math.Sin(linearAngle+math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angular.Z
-	var rpmDesRl = math.Min(math.Sin(linearAngle-math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angular.Z
+	var rpmDesFr = math.Min(math.Sin(-1*math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angular.Z
+	var rpmDesFl = math.Min(math.Sin(math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angular.Z
+	var rpmDesRr = math.Min(math.Sin(math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angular.Z
+	var rpmDesRl = math.Min(math.Sin(-1*math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angular.Z
 	var rpmMax = math.Max(math.Max(rpmDesFr, rpmDesFl), math.Max(rpmDesRr, rpmDesRl))
 
 	if rpmMax > 1 {
@@ -575,153 +457,136 @@ func (base *intermodeOmniBase) SetPower(ctx context.Context, linear, angular r3.
 		rpmDesRl /= rpmMax
 	}
 
-	var baseCmd = mecanumCommand{
-		state:   mecanumStates[mecanumStateEnable],
-		mode:    mecanumModes[mecanumModeSpeed],
-		current: kDefaultCurrent,
-		encoder: 0,
+	var driveCmd := driveCommand{
+		Accelerator:   0,
+		Brake:         0,
+		SteeringAngle: 0,
+		Gear:          gears[gearDrive],
+		DriveMode:     driveModes[driveModeIndAped],
+		SteerMode:     steerModes[steerModeFourWheelSteer],
 	}
-	var frCmd, flCmd, rrCmd, rlCmd = baseCmd, baseCmd, baseCmd, baseCmd
+	var axleCmd = axleCommand{
+		rightSpeed:    float64,
+		leftSpeed:     float64,
+		Brake:         float64,
+		SteeringAngle: float64,
+	}
+	var frontCmd, rearCmd = axleCmd, axleCmd
 
-	frCmd.rpm = int16(rpmDesFr * kLimitSpeedMaxRpm)
-	flCmd.rpm = int16(rpmDesFl * kLimitSpeedMaxRpm)
-	rrCmd.rpm = int16(rpmDesRr * kLimitSpeedMaxRpm)
-	rlCmd.rpm = int16(rpmDesRl * kLimitSpeedMaxRpm)
+	// TODO: Switch to actually using speed instead of a percentage
+	//		 Currently treating this as an Aped command at the base side
+	frontCmd.rightSpeed = rpmDesFr * 100.0
+	frontCmd.leftSpeed = rpmDesFl * 100.0
+	rearCmd.rightSpeed = rpmDesRr * 100.0
+	rearCmd.leftSpeed = rpmDesRl * 100.0
 
-	var canFrame = (&frCmd).toFrame(base.logger, kCanIdMotorFr)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("spin command TX error", "error", err)
+	if 0 > linearMagnitude {
+		driveCmd.Gear = gears[gearReverse]
 	}
 
-	canFrame = (&flCmd).toFrame(base.logger, kCanIdMotorFl)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("spin command TX error", "error", err)
+	if err := base.setNextCommand(ctx, &driveCmd); err != nil {
+		base.logger.Errorw("Error setting SetPower command", "error", err)
+		return err
+	}
+	if err := base.setNextCommand(ctx, &frontCmd); err != nil {
+		base.logger.Errorw("Error setting SetPower command", "error", err)
+		return err
+	}
+	if err := base.setNextCommand(ctx, &rearCmd); err != nil {
+		base.logger.Errorw("Error setting SetPower command", "error", err)
+		return err
 	}
 
-	canFrame = (&rrCmd).toFrame(base.logger, kCanIdMotorRr)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("spin command TX error", "error", err)
-	}
-
-	canFrame = (&rlCmd).toFrame(base.logger, kCanIdMotorRl)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("spin command TX error", "error", err)
-	}
+	base.isMoving.Store(true) // TODO: Replace with feedback info
 
 	return nil
 }
 
 // SetVelocity sets the linear (mmPerSec) and angular (degsPerSec) velocity.
+// TODO: Actually implement for differential
 func (base *intermodeOmniBase) SetVelocity(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
-	base.isMoving.Store(true) // TODO: Replace with feedback info
+	base.logger.Warnw("SetVelocity not implemented")
 
-	// Some vector components do not apply to a 2D base
-	if 0 != linear.Z {
-		base.logger.Warnw("Linear Z command non-zero and has no effect")
-	}
-	if 0 != angular.X {
-		base.logger.Warnw("Angular X command non-zero and has no effect")
-	}
-	if 0 != angular.Y {
-		base.logger.Warnw("Angular Y command non-zero and has no effect")
-	}
+	// base.isMoving.Store(true) // TODO: Replace with feedback info
 
-	var rpmDesMagnitudeLinX = math.Abs(linear.X / kWheelCircumferenceMm * 60)
-	rpmDesMagnitudeLinX = math.Min(float64(rpmDesMagnitudeLinX), kLimitSpeedMaxRpm)
+	// // Some vector components do not apply to a 2D base
+	// if 0 != linear.Z {
+	// 	base.logger.Warnw("Linear Z command non-zero and has no effect")
+	// }
+	// if 0 != angular.X {
+	// 	base.logger.Warnw("Angular X command non-zero and has no effect")
+	// }
+	// if 0 != angular.Y {
+	// 	base.logger.Warnw("Angular Y command non-zero and has no effect")
+	// }
 
-	var rpmDesMagnitudeLinY = math.Abs(linear.Y / kWheelCircumferenceMm * 60)
-	rpmDesMagnitudeLinY = math.Min(float64(rpmDesMagnitudeLinY), kLimitSpeedMaxRpm)
+	// var rpmDesMagnitudeLinX = math.Abs(linear.X / kWheelCircumferenceMm * 60)
+	// rpmDesMagnitudeLinX = math.Min(float64(rpmDesMagnitudeLinX), kLimitSpeedMaxRpm)
 
-	var rpmDesMagnitudeAngZ = math.Abs(angular.Z / 360 * 60 * kWheelRevPerVehicleRev)
-	rpmDesMagnitudeAngZ = math.Min(rpmDesMagnitudeAngZ, kLimitSpeedMaxRpm)
+	// var rpmDesMagnitudeLinY = math.Abs(linear.Y / kWheelCircumferenceMm * 60)
+	// rpmDesMagnitudeLinY = math.Min(float64(rpmDesMagnitudeLinY), kLimitSpeedMaxRpm)
 
-	var linearXNormal = math.Min(rpmDesMagnitudeLinX/kLimitSpeedMaxRpm, 1)
-	var linearYNormal = math.Min(rpmDesMagnitudeLinY/kLimitSpeedMaxRpm, 1)
-	var angularZNormal = math.Min(rpmDesMagnitudeAngZ/kLimitSpeedMaxRpm, 1)
+	// var rpmDesMagnitudeAngZ = math.Abs(angular.Z / 360 * 60 * kWheelRevPerVehicleRev)
+	// rpmDesMagnitudeAngZ = math.Min(rpmDesMagnitudeAngZ, kLimitSpeedMaxRpm)
 
-	var linearMagnitude = math.Sqrt(math.Pow(linearXNormal, 2) + math.Pow(linearYNormal, 2))
-	var linearAngle = math.Atan2(linear.Y, linear.X)
-	var rpmDesFr = math.Min(math.Sin(linearAngle-math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angularZNormal
-	var rpmDesFl = math.Min(math.Sin(linearAngle+math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angularZNormal
-	var rpmDesRr = math.Min(math.Sin(linearAngle+math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angularZNormal
-	var rpmDesRl = math.Min(math.Sin(linearAngle-math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angularZNormal
-	var rpmMax = math.Max(math.Max(rpmDesFr, rpmDesFl), math.Max(rpmDesRr, rpmDesRl))
+	// var linearXNormal = math.Min(rpmDesMagnitudeLinX/kLimitSpeedMaxRpm, 1)
+	// var linearYNormal = math.Min(rpmDesMagnitudeLinY/kLimitSpeedMaxRpm, 1)
+	// var angularZNormal = math.Min(rpmDesMagnitudeAngZ/kLimitSpeedMaxRpm, 1)
 
-	if rpmMax > 1 {
-		rpmDesFr /= rpmMax
-		rpmDesFl /= rpmMax
-		rpmDesRr /= rpmMax
-		rpmDesRl /= rpmMax
-	}
+	// var linearMagnitude = math.Sqrt(math.Pow(linearXNormal, 2) + math.Pow(linearYNormal, 2))
+	// var linearAngle = math.Atan2(linear.Y, linear.X)
+	// var rpmDesFr = math.Min(math.Sin(linearAngle-math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angularZNormal
+	// var rpmDesFl = math.Min(math.Sin(linearAngle+math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angularZNormal
+	// var rpmDesRr = math.Min(math.Sin(linearAngle+math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angularZNormal
+	// var rpmDesRl = math.Min(math.Sin(linearAngle-math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angularZNormal
+	// var rpmMax = math.Max(math.Max(rpmDesFr, rpmDesFl), math.Max(rpmDesRr, rpmDesRl))
 
-	var baseCmd = mecanumCommand{
-		state:   mecanumStates[mecanumStateEnable],
-		mode:    mecanumModes[mecanumModeSpeed],
-		current: kDefaultCurrent,
-		encoder: 0,
-	}
-	var frCmd, flCmd, rrCmd, rlCmd = baseCmd, baseCmd, baseCmd, baseCmd
-	frCmd.rpm = int16(rpmDesFr * kLimitSpeedMaxRpm)
-	flCmd.rpm = int16(rpmDesFl * kLimitSpeedMaxRpm)
-	rrCmd.rpm = int16(rpmDesRr * kLimitSpeedMaxRpm)
-	rlCmd.rpm = int16(rpmDesRl * kLimitSpeedMaxRpm)
+	// if rpmMax > 1 {
+	// 	rpmDesFr /= rpmMax
+	// 	rpmDesFl /= rpmMax
+	// 	rpmDesRr /= rpmMax
+	// 	rpmDesRl /= rpmMax
+	// }
 
-	var canFrame = (&frCmd).toFrame(base.logger, kCanIdMotorFr)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("spin command TX error", "error", err)
-	}
+	// var baseCmd = mecanumCommand{
+	// 	state:   mecanumStates[mecanumStateEnable],
+	// 	mode:    mecanumModes[mecanumModeSpeed],
+	// 	current: kDefaultCurrent,
+	// 	encoder: 0,
+	// }
+	// var frCmd, flCmd, rrCmd, rlCmd = baseCmd, baseCmd, baseCmd, baseCmd
+	// frCmd.rpm = int16(rpmDesFr * kLimitSpeedMaxRpm)
+	// flCmd.rpm = int16(rpmDesFl * kLimitSpeedMaxRpm)
+	// rrCmd.rpm = int16(rpmDesRr * kLimitSpeedMaxRpm)
+	// rlCmd.rpm = int16(rpmDesRl * kLimitSpeedMaxRpm)
 
-	canFrame = (&flCmd).toFrame(base.logger, kCanIdMotorFl)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("spin command TX error", "error", err)
-	}
+	// var canFrame = (&frCmd).toFrame(base.logger, kCanIdMotorFr)
+	// if _, err := base.canTxSocket.Send(canFrame); err != nil {
+	// 	base.logger.Errorw("spin command TX error", "error", err)
+	// }
 
-	canFrame = (&rrCmd).toFrame(base.logger, kCanIdMotorRr)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("spin command TX error", "error", err)
-	}
+	// canFrame = (&flCmd).toFrame(base.logger, kCanIdMotorFl)
+	// if _, err := base.canTxSocket.Send(canFrame); err != nil {
+	// 	base.logger.Errorw("spin command TX error", "error", err)
+	// }
 
-	canFrame = (&rlCmd).toFrame(base.logger, kCanIdMotorRl)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("spin command TX error", "error", err)
-	}
+	// canFrame = (&rrCmd).toFrame(base.logger, kCanIdMotorRr)
+	// if _, err := base.canTxSocket.Send(canFrame); err != nil {
+	// 	base.logger.Errorw("spin command TX error", "error", err)
+	// }
+
+	// canFrame = (&rlCmd).toFrame(base.logger, kCanIdMotorRl)
+	// if _, err := base.canTxSocket.Send(canFrame); err != nil {
+	// 	base.logger.Errorw("spin command TX error", "error", err)
+	// }
 
 	return nil
 }
 
 // Stop stops the base. It is assumed the base stops immediately.
 func (base *intermodeOmniBase) Stop(ctx context.Context, extra map[string]interface{}) error {
-	base.isMoving.Store(false) // TODO: Replace with feedback info
-
-	var cmd = mecanumCommand{
-		state:   mecanumStates[mecanumStateEnable],
-		mode:    mecanumModes[mecanumModeSpeed],
-		rpm:     0,
-		current: kDefaultCurrent,
-		encoder: 0,
-	}
-
-	var canFrame = (&cmd).toFrame(base.logger, kCanIdMotorFr)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("stop command TX error", "error", err)
-	}
-
-	canFrame = (&cmd).toFrame(base.logger, kCanIdMotorFl)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("stop command TX error", "error", err)
-	}
-
-	canFrame = (&cmd).toFrame(base.logger, kCanIdMotorRr)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("stop command TX error", "error", err)
-	}
-
-	canFrame = (&cmd).toFrame(base.logger, kCanIdMotorRl)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("stop command TX error", "error", err)
-	}
-
-	return nil
+	base.isMoving.Store(false)
+	return base.setNextCommand(ctx, &stopCmd)
 }
 
 // DoCommand executes additional commands beyond the Base{} interface. For this rover that includes door open and close commands.
@@ -732,8 +597,32 @@ func (base *intermodeOmniBase) DoCommand(ctx context.Context, cmd map[string]int
 		return nil, errors.New("missing 'command' value")
 	}
 	switch name {
-	default:
-		return nil, fmt.Errorf("no such command: %s", name)
+		case "set_prnd":
+			prndRaw, ok := cmd["prnd"]
+			if !ok {
+				return nil, errors.New("prnd must be set to a byte corresponding to park|reverse|neutral|drive|estop")
+			}
+			// TODO: Figure out how to get this to arrive as a byte/int
+			prnd, ok := prndRaw.(float64)
+			if !ok {
+				return nil, errors.New(fmt.Sprintf("prnd value must be an int but is type %T", prndRaw))
+			}
+
+			gearFound := false
+			for _, v := range gears {
+				if v == byte(prnd) {
+					telemSet(telemGearDesired, v)
+					gearFound = true
+				}
+			}
+			if !gearFound {
+				return nil, errors.New("prnd value must be an int corresponding to park|reverse|neutral|drive|estop")
+			}
+
+			return map[string]interface{}{"return": fmt.Sprintf("set_prnd command processed: %f", prnd)}, nil
+
+		default:
+			return nil, fmt.Errorf("no such command: %s", name)
 	}
 }
 
@@ -766,35 +655,7 @@ func (base *intermodeOmniBase) IsMoving(ctx context.Context) (bool, error) {
 
 // Close cleanly closes the base.
 func (base *intermodeOmniBase) Close(ctx context.Context) error {
-	// Disable the wheels
-	var cmd = mecanumCommand{
-		state:   mecanumStates[mecanumStateDisable],
-		mode:    mecanumModes[mecanumModeSpeed],
-		rpm:     0,
-		current: kDefaultCurrent,
-		encoder: 0,
-	}
-
-	var canFrame = (&cmd).toFrame(base.logger, kCanIdMotorFr)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("close command TX error", "error", err)
-	}
-
-	canFrame = (&cmd).toFrame(base.logger, kCanIdMotorFl)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("close command TX error", "error", err)
-	}
-
-	canFrame = (&cmd).toFrame(base.logger, kCanIdMotorRr)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("close command TX error", "error", err)
-	}
-
-	canFrame = (&cmd).toFrame(base.logger, kCanIdMotorRl)
-	if _, err := base.canTxSocket.Send(canFrame); err != nil {
-		base.logger.Errorw("close command TX error", "error", err)
-	}
-
+	base.setNextCommand(ctx, &stopCmd)
 	base.cancel()
 	base.activeBackgroundWorkers.Wait()
 
