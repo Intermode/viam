@@ -1,0 +1,13 @@
+{
+  "module_id": "intermode:modalBase-omni",
+  "visibility": "private",
+  "url": "https://github.com/Intermode/viam",
+  "description": "Implementation of a base component for Intermode's omnidirectional Modal",
+  "models": [
+    {
+      "api": "rdk:component:base",
+      "model": "intermode:modal:omnidirectional"
+    }
+  ],
+  "entrypoint": "bin/modal"
+}
