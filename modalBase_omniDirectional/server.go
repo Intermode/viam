@@ -19,10 +19,10 @@ import (
 
 	"go.viam.com/rdk/components/base"
 	_ "go.viam.com/rdk/components/generic"
-	"go.viam.com/rdk/config"
 	"go.viam.com/rdk/module"
-	"go.viam.com/rdk/registry"
 	"go.viam.com/rdk/resource"
+	"go.viam.com/rdk/components/base/kinematicbase"
+	"go.viam.com/rdk/spatialmath"
 )
 
 // Modal limits
@@ -176,12 +176,13 @@ type mecanumCommand struct {
 }
 
 type intermodeOmniBase struct {
-	name                    string
-	canTxSocket             canbus.Socket
-	isMoving                atomic.Bool
-	activeBackgroundWorkers sync.WaitGroup
-	cancel                  func()
-	logger                  golog.Logger
+    name                    string
+    canTxSocket             canbus.Socket
+    isMoving                atomic.Bool
+    activeBackgroundWorkers sync.WaitGroup
+    cancel                  func()
+    logger                  golog.Logger
+    geometries              []spatialmath.Geometry
 }
 
 type modalCommand interface {
@@ -194,7 +195,7 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 	if err != nil {
 		return err
 	}
-	modalModule.AddModelFromRegistry(ctx, base.Subtype, model)
+	modalModule.AddModelFromRegistry(ctx, base.API, model)
 
 	err = modalModule.Start(ctx)
 	defer modalModule.Close(ctx)
@@ -208,22 +209,26 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 
 // helper function to add the base's constructor and metadata to the component registry, so that we can later construct it.
 func registerBase() {
-	registry.RegisterComponent(
-		base.Subtype,
+	resource.RegisterComponent(
+		base.API,
 		model,
-		registry.Component{Constructor: func(
+		resource.Registration[resource.Resource, resource.NoNativeConfig]{Constructor: func(
 			ctx context.Context,
-			deps registry.Dependencies,
-			config config.Component,
+			deps resource.Dependencies,
+			conf resource.Config,
 			logger golog.Logger,
-		) (interface{}, error) {
-			return newBase(config.Name, logger)
+		) (resource.Resource, error) {
+			return newBase(conf, logger)
 		}})
 }
 
 // newBase creates a new base that underneath the hood sends canbus frames via
 // a 10ms publishing loop.
-func newBase(name string, logger golog.Logger) (base.Base, error) {
+func newBase(conf resource.Config, logger golog.Logger) (base.Base, error) {
+	geometries, err := kinematicbase.CollisionGeometry(conf.Frame)
+    if err != nil {
+    }
+
 	socketSend, err := canbus.New()
 	if err != nil {
 		return nil, err
@@ -252,12 +257,13 @@ func newBase(name string, logger golog.Logger) (base.Base, error) {
 	}
 
 	_, cancel := context.WithCancel(context.Background())
-	iBase := &intermodeOmniBase{
-		name:        name,
-		canTxSocket: *socketSend,
-		cancel:      cancel,
-		logger:      logger,
-	}
+    iBase := &intermodeOmniBase{
+        name:        conf.Name,
+        canTxSocket: *socketSend,
+        cancel:      cancel,
+        logger:      logger,
+        geometries: geometries,
+    }
 	iBase.isMoving.Store(false)
 
 	// iBase.activeBackgroundWorkers.Add(2)
@@ -533,7 +539,8 @@ func (base *intermodeOmniBase) MoveStraight(ctx context.Context, distanceMm int,
 		base.logger.Errorw("straight command TX error", "error", err)
 	}
 
-	if !viamutils.SelectContextOrWait(ctx, time.Duration(distanceMm/int(math.Abs(mmPerSec)))) {
+	var waitSeconds = float64(distanceMm)/math.Abs(mmPerSec) + 1.5
+	if !viamutils.SelectContextOrWait(ctx, time.Duration(waitSeconds * float64(time.Second))) {
 		return ctx.Err()
 	}
 
@@ -594,7 +601,8 @@ func (base *intermodeOmniBase) Spin(ctx context.Context, angleDeg, degsPerSec fl
 		base.logger.Errorw("spin command TX error", "error", err)
 	}
 
-	if !viamutils.SelectContextOrWait(ctx, time.Duration(angleDeg/math.Abs(degsPerSec))) {
+	var waitSeconds = angleDeg/math.Abs(degsPerSec) + 1.5
+	if !viamutils.SelectContextOrWait(ctx, time.Duration(waitSeconds * float64(time.Second))) {
 		return ctx.Err()
 	}
 
@@ -794,12 +802,35 @@ func (base *intermodeOmniBase) DoCommand(ctx context.Context, cmd map[string]int
 	}
 }
 
+func (i intermodeOmniBase) Geometries(ctx context.Context, extra map[string]interface{}) ([]spatialmath.Geometry, error) {
+	return i.geometries, nil
+}
+
+func (i *intermodeOmniBase) Name() resource.Name {
+	return resource.Name {
+		API:    	base.API,
+		Remote:	 	"test",
+		Name:		"modal",
+	}
+}
+
+func (i *intermodeOmniBase) Reconfigure(context.Context, resource.Dependencies, resource.Config) error {
+	return nil
+}
+
+func (i *intermodeOmniBase) Properties(ctx context.Context, extra map[string]interface{}) (base.Properties, error) {
+	return base.Properties {
+		WidthMeters:				kVehicleTrackwidthMm/1000.0,
+		WheelCircumferenceMeters:  	kWheelCircumferenceMm/1000.0,
+	}, nil
+}
+
 func (base *intermodeOmniBase) IsMoving(ctx context.Context) (bool, error) {
 	return base.isMoving.Load(), nil
 }
 
 // Close cleanly closes the base.
-func (base *intermodeOmniBase) Close() {
+func (base *intermodeOmniBase) Close(ctx context.Context) error {
 	// Disable the wheels
 	var cmd = mecanumCommand{
 		state:   mecanumStates[mecanumStateDisable],
@@ -831,4 +862,6 @@ func (base *intermodeOmniBase) Close() {
 
 	base.cancel()
 	base.activeBackgroundWorkers.Wait()
+
+	return nil
 }
