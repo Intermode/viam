@@ -57,35 +57,13 @@ func telemSet(key string, value interface{}) {
 	telemetry[key] = value
 }
 
-// func telemGet(key string) interface{} {
-// 	telemetryLock.RLock()
-// 	defer telemetryLock.RUnlock()
-// 	return telemetry[key]
-// }
-
-// func telemGetAll() map[string]interface{} {
-// 	telemetryLock.RLock()
-// 	defer telemetryLock.RUnlock()
-// 	toReturn := map[string]interface{}{
-// 		telemGearDesired:   byte(0),
-// 		telemSpeed:         math.NaN(),
-// 		telemSpeedLimit:    float64(-1),
-// 		telemSteerAngle:    -1,
-// 		telemStateOfCharge: -1,
-// 	}
-// 	for k, v := range telemetry {
-// 		toReturn[k] = v
-// 	}
-// 	return toReturn
-// }
-
-// // /////////////
-// // Fail-Safe //
-// // /////////////
-// const commsTimeoutIntervalMs = 1000 // If it has been at least this long since last command received, execute containment
-// var commsTimeout time.Time
-// var commsTimeoutEnable = true		// Enable or disable comms timeout
-// 									// Presently changed based off of received command style
+///////////////
+// Fail-Safe //
+///////////////
+const commsTimeoutIntervalMs = 1000 // If it has been at least this long since last command received, execute containment
+var commsTimeout time.Time
+var commsTimeoutEnable = false		// Enable or disable comms timeout
+									// Presently changed based off of received command style
 
 const (
 	channel = "can0"
@@ -243,15 +221,6 @@ func newBase(conf resource.Config, logger golog.Logger) (base.Base, error) {
 		return nil, err
 	}
 
-	// err = socketRecv.SetFilters([]unix.CanFilter{
-	// 	{Id: kCanIdTelemWheelSpeedId, Mask: unix.CAN_SFF_MASK},
-	// 	{Id: kCanIdTelemBatteryPowerId, Mask: unix.CAN_SFF_MASK},
-	// 	{Id: kCanIdTelemBatteryStateId, Mask: unix.CAN_SFF_MASK},
-	// })
-	// if err != nil {
-	// 	return nil, err
-	// }
-
 	if err := socketRecv.Bind(channel); err != nil {
 		return nil, err
 	}
@@ -266,13 +235,10 @@ func newBase(conf resource.Config, logger golog.Logger) (base.Base, error) {
     }
 	iBase.isMoving.Store(false)
 
-	// iBase.activeBackgroundWorkers.Add(2)
-	// viamutils.ManagedGo(func() {
-	// 	publishThread(cancelCtx, *socketSend, iBase.nextCommandCh, logger)
-	// }, iBase.activeBackgroundWorkers.Done)
-	// viamutils.ManagedGo(func() {
-	// 	receiveThread(cancelCtx, *socketRecv, logger)
-	// }, iBase.activeBackgroundWorkers.Done)
+	iBase.activeBackgroundWorkers.Add(1)
+	viamutils.ManagedGo(func() {
+		publishThread(cancelCtx, *socketSend, iBase.nextCommandCh, logger)
+	}, iBase.activeBackgroundWorkers.Done)
 
 	return iBase, nil
 }
@@ -301,34 +267,34 @@ func (cmd *mecanumCommand) toFrame(logger golog.Logger, canId uint32) canbus.Fra
 }
 
 // // publishThread continuously sends the current drive command over the canbus.
-// func publishThread(
-// 	ctx context.Context,
-// 	socket canbus.Socket,
-// 	nextCommandCh chan canbus.Frame,
-// 	logger golog.Logger,
-// ) {
-// 	defer socket.Close()
-// 	commsTimeout = time.Now().Add(commsTimeoutIntervalMs * time.Millisecond)
+func publishThread(
+	ctx context.Context,
+	socket canbus.Socket,
+	nextCommandCh chan canbus.Frame,
+	logger golog.Logger,
+) {
+	defer socket.Close()
+	commsTimeout = time.Now().Add(commsTimeoutIntervalMs * time.Millisecond)
 
-// 	driveFrame := (&stopCmd).toFrame(logger)
-// 	var frame canbus.Frame
+	driveFrame := (&stopCmd).toFrame(logger)
+	var frame canbus.Frame
 
-// 	for {
-// 		if ctx.Err() != nil {
-// 			return
-// 		}
-// 		select {
-// 		case <-ctx.Done():
-// 		case <-time.After(10 * time.Millisecond):
-// 		}
-// 		if commsTimeoutEnable && time.Now().After(commsTimeout) {
-// 			driveFrame = (&emergencyCmd).toFrame(logger)
-// 		}
-// 		if _, err := socket.Send(driveFrame); err != nil {
-// 			logger.Errorw("drive command send error", "error", err)
-// 		}
-// 	}
-// }
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(10 * time.Millisecond):
+		}
+		if commsTimeoutEnable && time.Now().After(commsTimeout) {
+			driveFrame = (&emergencyCmd).toFrame(logger)
+		}
+		if _, err := socket.Send(driveFrame); err != nil {
+			logger.Errorw("drive command send error", "error", err)
+		}
+	}
+}
 
 /*
  *	The CAN RX support functions were translated from C++ by ChatGPT, so might
@@ -450,37 +416,6 @@ var (
 	canSignalWheelSpeedRearRight  = *NewCanSignal_TypeDef(0.0078125, 0, 48, 16, 1, 1)
 	canSignalBatteryStateOfCharge = *NewCanSignal_TypeDef(0.1, 0, 0, 16, 1, 0)
 )
-
-// receiveThread receives canbus frames and stores data when necessary.
-// func receiveThread(
-// 	ctx context.Context,
-// 	socket canbus.Socket,
-// 	logger golog.Logger,
-// ) {
-// 	defer socket.Close()
-
-// 	for {
-// 		if ctx.Err() != nil {
-// 			return
-// 		}
-
-// 		frame, err := socket.Recv()
-// 		if err != nil {
-// 			logger.Errorw("CAN Rx error", "error", err)
-// 		}
-
-// 		switch frame.ID {
-// 		case kCanIdTelemWheelSpeedId:
-// 			var speedFl = fCanExtractSignal(frame.Data, canSignalWheelSpeedFrontLeft)
-// 			var speedFr = fCanExtractSignal(frame.Data, canSignalWheelSpeedFrontRight)
-// 			var speedRl = fCanExtractSignal(frame.Data, canSignalWheelSpeedRearLeft)
-// 			var speedRr = fCanExtractSignal(frame.Data, canSignalWheelSpeedRearRight)
-// 			telemSet(telemSpeed, (speedFl+speedFr+speedRl+speedRr)/4)
-// 		case kCanIdTelemBatteryStateId:
-// 			telemSet(telemStateOfCharge, fCanExtractSignal(frame.Data, canSignalBatteryStateOfCharge))
-// 		}
-// 	}
-// }
 
 /*
 	InterMode Base Implementation
