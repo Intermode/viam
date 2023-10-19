@@ -125,12 +125,12 @@ const (
 	kulCanIdCmdAxleR uint32 = 0x223
 
 	// Vehicle properties
-	kVehicleWheelbaseMm  = 709.684
-	kVehicleTrackwidthMm = 528.580
+	kVehicleWheelbaseMm  = 680
+	kVehicleTrackwidthMm = 515
 	kVehicleSeparation   = (kVehicleWheelbaseMm + kVehicleTrackwidthMm) / 2
 
 	// Wheel properties
-	kWheelRadiusMm        float64 = 77
+	kWheelRadiusMm        float64 = 125
 	kWheelCircumferenceMm float64 = 2 * math.Pi * kWheelRadiusMm
 	kWheelEncoderBits     int     = 12
 	kWheelTicksPerRev     int     = 1 << kWheelEncoderBits
@@ -140,7 +140,7 @@ const (
 
 	// Limits and defaults
 	kLimitCurrentMax  = 5                                                        // Maximum motor current
-	kLimitSpeedMaxKph = 2.5                                                      // Max speed in KPH
+	kLimitSpeedMaxKph = 5                                                        // Max speed in KPH
 	kLimitSpeedMaxRpm = kLimitSpeedMaxKph * 1000000 / kWheelCircumferenceMm / 60 // Max speed in RPM
 	kDefaultCurrent   = kLimitCurrentMax                                         // Used for straight and spin commands
 
@@ -525,80 +525,87 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 // SetVelocity sets the linear (mmPerSec) and angular (degsPerSec) velocity.
 // TODO: Actually implement for differential
 func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
-	base.logger.Warnw("SetVelocity not implemented")
+	base.isMoving.Store(true) // TODO: Replace with feedback info
 
-	// base.isMoving.Store(true) // TODO: Replace with feedback info
+	// Some vector components do not apply to a 2D base
+	if 0 != linear.X {
+		base.logger.Warnw("Linear X command non-zero and has no effect")
+	}
+	if 0 != linear.Z {
+		base.logger.Warnw("Linear Z command non-zero and has no effect")
+	}
+	if 0 != angular.X {
+		base.logger.Warnw("Angular X command non-zero and has no effect")
+	}
+	if 0 != angular.Y {
+		base.logger.Warnw("Angular Y command non-zero and has no effect")
+	}
 
-	// // Some vector components do not apply to a 2D base
-	// if 0 != linear.Z {
-	// 	base.logger.Warnw("Linear Z command non-zero and has no effect")
-	// }
-	// if 0 != angular.X {
-	// 	base.logger.Warnw("Angular X command non-zero and has no effect")
-	// }
-	// if 0 != angular.Y {
-	// 	base.logger.Warnw("Angular Y command non-zero and has no effect")
-	// }
+	var rpmDesMagnitudeLinY = math.Abs(linear.Y / kWheelCircumferenceMm * 60)
+	rpmDesMagnitudeLinY = math.Min(float64(rpmDesMagnitudeLinY), kLimitSpeedMaxRpm)
 
-	// var rpmDesMagnitudeLinX = math.Abs(linear.X / kWheelCircumferenceMm * 60)
-	// rpmDesMagnitudeLinX = math.Min(float64(rpmDesMagnitudeLinX), kLimitSpeedMaxRpm)
+	var rpmDesMagnitudeAngZ = math.Abs(angular.Z / 360 * 60 * kWheelRevPerVehicleRev)
+	rpmDesMagnitudeAngZ = math.Min(rpmDesMagnitudeAngZ, kLimitSpeedMaxRpm)
 
-	// var rpmDesMagnitudeLinY = math.Abs(linear.Y / kWheelCircumferenceMm * 60)
-	// rpmDesMagnitudeLinY = math.Min(float64(rpmDesMagnitudeLinY), kLimitSpeedMaxRpm)
+	var linearYNormal = math.Min(rpmDesMagnitudeLinY/kLimitSpeedMaxRpm, 1)
+	var angularZNormal = math.Min(rpmDesMagnitudeAngZ/kLimitSpeedMaxRpm, 1)
 
-	// var rpmDesMagnitudeAngZ = math.Abs(angular.Z / 360 * 60 * kWheelRevPerVehicleRev)
-	// rpmDesMagnitudeAngZ = math.Min(rpmDesMagnitudeAngZ, kLimitSpeedMaxRpm)
+	var linearMagnitude = linearYNormal
+	var linearAngle = math.Atan2(linear.Y, 0)
+	var rpmDesFr = math.Min(math.Sin(linearAngle-math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angularZNormal
+	var rpmDesFl = math.Min(math.Sin(linearAngle+math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angularZNormal
+	var rpmDesRr = math.Min(math.Sin(linearAngle+math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angularZNormal
+	var rpmDesRl = math.Min(math.Sin(linearAngle-math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angularZNormal
+	var rpmMax = math.Max(math.Max(rpmDesFr, rpmDesFl), math.Max(rpmDesRr, rpmDesRl))
 
-	// var linearXNormal = math.Min(rpmDesMagnitudeLinX/kLimitSpeedMaxRpm, 1)
-	// var linearYNormal = math.Min(rpmDesMagnitudeLinY/kLimitSpeedMaxRpm, 1)
-	// var angularZNormal = math.Min(rpmDesMagnitudeAngZ/kLimitSpeedMaxRpm, 1)
+	if rpmMax > 1 {
+		rpmDesFr /= rpmMax
+		rpmDesFl /= rpmMax
+		rpmDesRr /= rpmMax
+		rpmDesRl /= rpmMax
+	}
 
-	// var linearMagnitude = math.Sqrt(math.Pow(linearXNormal, 2) + math.Pow(linearYNormal, 2))
-	// var linearAngle = math.Atan2(linear.Y, linear.X)
-	// var rpmDesFr = math.Min(math.Sin(linearAngle-math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angularZNormal
-	// var rpmDesFl = math.Min(math.Sin(linearAngle+math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angularZNormal
-	// var rpmDesRr = math.Min(math.Sin(linearAngle+math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angularZNormal
-	// var rpmDesRl = math.Min(math.Sin(linearAngle-math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angularZNormal
-	// var rpmMax = math.Max(math.Max(rpmDesFr, rpmDesFl), math.Max(rpmDesRr, rpmDesRl))
+	var driveCmd = driveCommand{
+		Accelerator:   0,
+		Brake:         0,
+		SteeringAngle: 0,
+		Gear:          gears[gearDrive],
+		DriveMode:     driveModes[driveModeIndAped],
+		SteerMode:     steerModes[steerModeFourWheelSteer],
+	}
+	var axleCmd = axleCommand{
+		rightSpeed:    0.0,
+		leftSpeed:     0.0,
+		Brake:         0.0,
+		SteeringAngle: 0.0,
+	}
+	var frontCmd, rearCmd = axleCmd, axleCmd
 
-	// if rpmMax > 1 {
-	// 	rpmDesFr /= rpmMax
-	// 	rpmDesFl /= rpmMax
-	// 	rpmDesRr /= rpmMax
-	// 	rpmDesRl /= rpmMax
-	// }
+	// TODO: Switch to actually using speed instead of a percentage
+	//		 Currently treating this as an Aped command at the base side
+	frontCmd.canId = kulCanIdCmdAxleF
+	frontCmd.rightSpeed = rpmDesFr * 100.0
+	frontCmd.leftSpeed = rpmDesFl * 100.0
+	rearCmd.canId = kulCanIdCmdAxleR
+	rearCmd.rightSpeed = rpmDesRr * 100.0
+	rearCmd.leftSpeed = rpmDesRl * 100.0
 
-	// var baseCmd = mecanumCommand{
-	// 	state:   mecanumStates[mecanumStateEnable],
-	// 	mode:    mecanumModes[mecanumModeSpeed],
-	// 	current: kDefaultCurrent,
-	// 	encoder: 0,
-	// }
-	// var frCmd, flCmd, rrCmd, rlCmd = baseCmd, baseCmd, baseCmd, baseCmd
-	// frCmd.rpm = int16(rpmDesFr * kLimitSpeedMaxRpm)
-	// flCmd.rpm = int16(rpmDesFl * kLimitSpeedMaxRpm)
-	// rrCmd.rpm = int16(rpmDesRr * kLimitSpeedMaxRpm)
-	// rlCmd.rpm = int16(rpmDesRl * kLimitSpeedMaxRpm)
+	if 0 > linearMagnitude {
+		driveCmd.Gear = gears[gearReverse]
+	}
 
-	// var canFrame = (&frCmd).toFrame(base.logger, kCanIdMotorFr)
-	// if _, err := base.canTxSocket.Send(canFrame); err != nil {
-	// 	base.logger.Errorw("spin command TX error", "error", err)
-	// }
-
-	// canFrame = (&flCmd).toFrame(base.logger, kCanIdMotorFl)
-	// if _, err := base.canTxSocket.Send(canFrame); err != nil {
-	// 	base.logger.Errorw("spin command TX error", "error", err)
-	// }
-
-	// canFrame = (&rrCmd).toFrame(base.logger, kCanIdMotorRr)
-	// if _, err := base.canTxSocket.Send(canFrame); err != nil {
-	// 	base.logger.Errorw("spin command TX error", "error", err)
-	// }
-
-	// canFrame = (&rlCmd).toFrame(base.logger, kCanIdMotorRl)
-	// if _, err := base.canTxSocket.Send(canFrame); err != nil {
-	// 	base.logger.Errorw("spin command TX error", "error", err)
-	// }
+	if err := base.setNextCommand(ctx, &driveCmd); err != nil {
+		base.logger.Errorw("Error setting SetPower command", "error", err)
+		return err
+	}
+	if err := base.setNextCommand(ctx, &frontCmd); err != nil {
+		base.logger.Errorw("Error setting SetPower command", "error", err)
+		return err
+	}
+	if err := base.setNextCommand(ctx, &rearCmd); err != nil {
+		base.logger.Errorw("Error setting SetPower command", "error", err)
+		return err
+	}
 
 	return nil
 }
