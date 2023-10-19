@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"sync"
@@ -33,28 +34,7 @@ const SPEED_LIMP_HOME = 20.0 // Max speed (throttle) if a limp home condition is
 var model = resource.NewModel("intermode", "modal", "omnidirectional")
 
 func main() {
-	goutils.ContextualMain(mainWithArgs, golog.NewDevelopmentLogger("intermodeOmniBaseModule"))
-}
-
-///////////////
-// Telemetry //
-///////////////
-var telemetryLock = sync.RWMutex{}
-
-var (
-	telemetry = map[string]interface{}{
-		telemGearDesired:   byte(0),
-		telemSpeed:         math.NaN(),
-		telemSpeedLimit:    float64(-1),
-		telemSteerAngle:    -1,
-		telemStateOfCharge: -1,
-	}
-)
-
-func telemSet(key string, value interface{}) {
-	telemetryLock.Lock()
-	defer telemetryLock.Unlock()
-	telemetry[key] = value
+	goutils.ContextualMain(mainWithArgs, golog.NewDevelopmentLogger("intermodeBaseModule"))
 }
 
 ///////////////
@@ -66,35 +46,35 @@ var commsTimeoutEnable = false		// Enable or disable comms timeout
 									// Presently changed based off of received command style
 
 
-type (
-	interModeBase = struct {
-		name                    string
-		canTxSocket             canbus.Socket
-		nextCommandCh           chan canbus.Frame
-		isMoving                atomic.Bool
-		activeBackgroundWorkers sync.WaitGroup
-		cancel                  func()
-		logger                  golog.Logger
-		geometries              []spatialmath.Geometry
-	}
-	driveCommand  = struct {
-		Accelerator   float64
-		Brake         float64
-		SteeringAngle float64
-		Gear          byte
-		DriveMode     byte
-		SteerMode     byte
-	}
-	axleCommand = struct {
-		rightSpeed    float64
-		leftSpeed     float64
-		Brake         float64
-		SteeringAngle float64
-	}
-	modalCommand = interface {
-		toFrame(logger golog.Logger) canbus.Frame
-	}
-)
+type driveCommand struct {
+	Accelerator   	float64
+	Brake         	float64
+	SteeringAngle 	float64
+	Gear          	byte
+	DriveMode     	byte
+	SteerMode     	byte
+}
+
+type intermodeBase struct {
+	name                    string
+	canTxSocket             canbus.Socket
+	nextCommandCh           chan canbus.Frame
+	isMoving                atomic.Bool
+	activeBackgroundWorkers sync.WaitGroup
+	cancel                  func()
+	logger                  golog.Logger
+	geometries              []spatialmath.Geometry
+}
+type axleCommand struct {
+	canId				uint32
+	rightSpeed    	float64
+	leftSpeed     	float64
+	Brake         	float64
+	SteeringAngle 	float64
+}
+type modalCommand interface {
+	toFrame(logger golog.Logger) canbus.Frame
+}
 
 var (
 	gears = map[string]byte{
@@ -122,7 +102,7 @@ var (
 		Brake:         	1,
 		SteeringAngle: 	0,
 		Gear:          	gears[gearEmergencyStop],
-		DriveMode:	   	driveModes[driveMode4WD],
+		DriveMode:	   	driveModes[driveModeFourWheelDrive],
 		SteerMode:     	steerModes[steerModeFourWheelSteer],
 	}
 	stopCmd = driveCommand{
@@ -130,7 +110,7 @@ var (
 		Brake:         	1,
 		SteeringAngle: 	0,
 		Gear:          	gears[gearPark],
-		DriveMode:	   	driveModes[driveMode4WD],
+		DriveMode:	   	driveModes[driveModeFourWheelDrive],
 		SteerMode:     	steerModes[steerModeFourWheelSteer],
 	}
 )
@@ -140,7 +120,9 @@ const (
 	// channel = "vcan0"
 	
 	// CAN IDs
-	kulCanIdDriveCmd uint32 = 0x220
+	kulCanIdCmdDrive uint32 = 0x220
+	kulCanIdCmdAxleF uint32 = 0x222
+	kulCanIdCmdAxleR uint32 = 0x223
 
 	// Vehicle properties
 	kVehicleWheelbaseMm  = 709.684
@@ -167,6 +149,23 @@ const (
 	kCanIdTelemWheelSpeedId   uint32 = 0x241
 	kCanIdTelemBatteryPowerId uint32 = 0x250
 	kCanIdTelemBatteryStateId uint32 = 0x251
+
+	// Keys	
+	gearPark          = "park"
+	gearReverse       = "reverse"
+	gearNeutral       = "neutral"
+	gearDrive         = "drive"
+	gearEmergencyStop = "emergency_stop"
+
+	steerModeFrontWheelSteer = "front-wheel-steer"
+	steerModeRearWheelSteer  = "rear-wheel-steer"
+	steerModeFourWheelSteer  = "four-wheel-steer"
+	steerModeCrabSteering    = "crab-steering"
+
+	driveModeFourWheelDrive 	= "four-wheel-drive"
+	driveModeFrontWheelDrive 	= "front-wheel-drive"
+	driveModeRearWheelDrive 	= "rear-wheel-drive"
+	driveModeIndAped 			= "independent-aped-drive"
 )
 
 var (
@@ -198,63 +197,36 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 	return nil
 }
 
-// helper function to add the base's constructor and metadata to the component registry, so that we can later construct it.
-func registerBase() {
-	resource.RegisterComponent(
-		base.API,
-		model,
-		resource.Registration[resource.Resource, resource.NoNativeConfig]{Constructor: func(
-			ctx context.Context,
-			deps resource.Dependencies,
-			conf resource.Config,
-			logger golog.Logger,
-		) (resource.Resource, error) {
-			return newBase(conf, logger)
-		}})
-}
+// calculateAccelAndBrakeBytes returns the intermode specific acceleration and brake bytes for the given
+// acceleration percentage.
+func calculateAccelAndBrakeBytes(accelPct float64, brakePct float64) []byte {
+	var speedLimit = SPEED_LIMP_HOME
+	var ok = false
 
-// newBase creates a new base that underneath the hood sends canbus frames via
-// a 10ms publishing loop.
-func newBase(conf resource.Config, logger golog.Logger) (base.Base, error) {
-	geometries, err := kinematicbase.CollisionGeometry(conf.Frame)
-    if err != nil {
-    }
-
-	socketSend, err := canbus.New()
-	if err != nil {
-		return nil, err
+	if !ok {
+		speedLimit = SPEED_LIMP_HOME
+	}
+	if speedLimit >= 0.0 { // Limit has been received from controller
+		accelPct = accelPct * speedLimit
+	} else { // No limit received, apply limp home mode
+		accelPct = accelPct * SPEED_LIMP_HOME
 	}
 
-	if err := socketSend.Bind(channel); err != nil {
-		return nil, err
+	accelPct = math.Abs(accelPct)
+	brakePct = brakePct * PEDAL_MAX
+
+	// TODO: Remove after the Modal properly handles two pedal
+	if brakePct > 0 {
+		accelPct = 0.0
 	}
 
-	socketRecv, err := canbus.New()
-	if err != nil {
-		return nil, err
-	}
+	accelBytes := uint16(accelPct / 0.0625) // intermode scalar
+	brakeBytes := uint16(brakePct / 0.0625)
 
-	if err := socketRecv.Bind(channel); err != nil {
-		return nil, err
-	}
-
-	_, cancel := context.WithCancel(context.Background())
-    iBase := &intermodeOmniBase{
-        name:        conf.Name,
-        canTxSocket: *socketSend,
-		nextCommandCh: make(chan canbus.Frame),
-        cancel:      cancel,
-        logger:      logger,
-        geometries: geometries,
-    }
-	iBase.isMoving.Store(false)
-
-	iBase.activeBackgroundWorkers.Add(1)
-	viamutils.ManagedGo(func() {
-		publishThread(cancelCtx, iBase.canTxSocket, iBase.nextCommandCh, logger)
-	}, iBase.activeBackgroundWorkers.Done)
-
-	return iBase, nil
+	retBytes := make([]byte, 4)
+	binary.LittleEndian.PutUint16(retBytes[0:2], accelBytes)
+	binary.LittleEndian.PutUint16(retBytes[2:4], brakeBytes)
+	return retBytes
 }
 
 /*
@@ -262,7 +234,7 @@ func newBase(conf resource.Config, logger golog.Logger) (base.Base, error) {
  */
 func (cmd *driveCommand) toFrame(logger golog.Logger) canbus.Frame {
 	frame := canbus.Frame{
-		ID:   kulCanIdDriveCmd,
+		ID:   kulCanIdCmdDrive,
 		Data: make([]byte, 0, 8),
 		Kind: canbus.SFF,
 	}
@@ -273,6 +245,32 @@ func (cmd *driveCommand) toFrame(logger golog.Logger) canbus.Frame {
 	frame.Data = append(frame.Data, calculateAccelAndBrakeBytes(cmd.Accelerator, cmd.Brake)...)
 	frame.Data = append(frame.Data, steeringAngleBytes...)	// Steering hard-coded to 0 as turning is handled by the wheels
 	frame.Data = append(frame.Data, cmd.Gear, cmd.DriveMode, cmd.SteerMode)
+
+	logger.Debugw("frame", "data", frame.Data)
+
+	return frame
+}
+
+/*
+ * Convert an axle command to a CAN frame
+ */
+func (cmd *axleCommand) toFrame(logger golog.Logger) canbus.Frame {
+	frame := canbus.Frame{
+		ID:   cmd.canId,
+		Data: make([]byte, 8),
+		Kind: canbus.SFF,
+	}
+
+	// TODO: Remove magic number scalars
+	rightSpeedBytes := uint16(cmd.rightSpeed / 0.0625)
+	leftSpeedBytes := uint16(cmd.leftSpeed / 0.0625)
+	brakeBytes := uint16(cmd.Brake / 0.0625)
+	steeringAngleBytes := uint16(cmd.SteeringAngle / 0.0078125)
+
+	binary.LittleEndian.PutUint16(frame.Data[0:2], rightSpeedBytes)
+	binary.LittleEndian.PutUint16(frame.Data[2:4], leftSpeedBytes)
+	binary.LittleEndian.PutUint16(frame.Data[4:6], brakeBytes)
+	binary.LittleEndian.PutUint16(frame.Data[6:8], steeringAngleBytes)
 
 	logger.Debugw("frame", "data", frame.Data)
 
@@ -296,6 +294,15 @@ func (base *intermodeBase) setNextCommand(ctx context.Context, cmd modalCommand)
 	return nil
 }
 
+// Close cleanly closes the base.
+func (base *intermodeBase) Close(ctx context.Context) error {
+	base.setNextCommand(ctx, &stopCmd)
+	base.cancel()
+	base.activeBackgroundWorkers.Wait()
+
+	return nil
+}
+
 // // publishThread continuously sends the current drive command over the canbus.
 func publishThread(
 	ctx context.Context,
@@ -315,6 +322,17 @@ func publishThread(
 		}
 		select {
 		case <-ctx.Done():
+		case frame = <-nextCommandCh:
+			if frame.ID == kulCanIdCmdDrive {
+				// new drive command will replace the existing drive command and be sent every 10ms.
+				driveFrame = frame
+				commsTimeout = time.Now().Add(commsTimeoutIntervalMs * time.Millisecond)
+			} else {
+				// non-drive commands should be sent immediately, but retain current drive command for base heartbeating.
+				if _, err := socket.Send(frame); err != nil {
+					logger.Errorw("non-drive command send error", "error", err)
+				}
+			}
 		case <-time.After(10 * time.Millisecond):
 		}
 		if commsTimeoutEnable && time.Now().After(commsTimeout) {
@@ -425,7 +443,7 @@ func (base *intermodeBase) Spin(ctx context.Context, angleDeg, degsPerSec float6
 }
 
 // SetPower sets the linear and angular [-1, 1] drive power.
-func (base *intermodeOmniBase) SetPower(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
+func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
 	base.isMoving.Store(true) // TODO: Replace with feedback info
 
 	// Some vector components do not apply to a 2D base
@@ -457,7 +475,7 @@ func (base *intermodeOmniBase) SetPower(ctx context.Context, linear, angular r3.
 		rpmDesRl /= rpmMax
 	}
 
-	var driveCmd := driveCommand{
+	var driveCmd = driveCommand{
 		Accelerator:   0,
 		Brake:         0,
 		SteeringAngle: 0,
@@ -466,17 +484,19 @@ func (base *intermodeOmniBase) SetPower(ctx context.Context, linear, angular r3.
 		SteerMode:     steerModes[steerModeFourWheelSteer],
 	}
 	var axleCmd = axleCommand{
-		rightSpeed:    float64,
-		leftSpeed:     float64,
-		Brake:         float64,
-		SteeringAngle: float64,
+		rightSpeed:    0.0,
+		leftSpeed:     0.0,
+		Brake:         0.0,
+		SteeringAngle: 0.0,
 	}
 	var frontCmd, rearCmd = axleCmd, axleCmd
 
 	// TODO: Switch to actually using speed instead of a percentage
 	//		 Currently treating this as an Aped command at the base side
+	frontCmd.canId = kulCanIdCmdAxleF
 	frontCmd.rightSpeed = rpmDesFr * 100.0
 	frontCmd.leftSpeed = rpmDesFl * 100.0
+	rearCmd.canId = kulCanIdCmdAxleR
 	rearCmd.rightSpeed = rpmDesRr * 100.0
 	rearCmd.leftSpeed = rpmDesRl * 100.0
 
@@ -504,7 +524,7 @@ func (base *intermodeOmniBase) SetPower(ctx context.Context, linear, angular r3.
 
 // SetVelocity sets the linear (mmPerSec) and angular (degsPerSec) velocity.
 // TODO: Actually implement for differential
-func (base *intermodeOmniBase) SetVelocity(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
+func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
 	base.logger.Warnw("SetVelocity not implemented")
 
 	// base.isMoving.Store(true) // TODO: Replace with feedback info
@@ -584,13 +604,13 @@ func (base *intermodeOmniBase) SetVelocity(ctx context.Context, linear, angular 
 }
 
 // Stop stops the base. It is assumed the base stops immediately.
-func (base *intermodeOmniBase) Stop(ctx context.Context, extra map[string]interface{}) error {
+func (base *intermodeBase) Stop(ctx context.Context, extra map[string]interface{}) error {
 	base.isMoving.Store(false)
 	return base.setNextCommand(ctx, &stopCmd)
 }
 
 // DoCommand executes additional commands beyond the Base{} interface. For this rover that includes door open and close commands.
-func (base *intermodeOmniBase) DoCommand(ctx context.Context, cmd map[string]interface{}) (map[string]interface{}, error) {
+func (base *intermodeBase) DoCommand(ctx context.Context, cmd map[string]interface{}) (map[string]interface{}, error) {
 	// TODO: expand this function to change steering/gearing modes.
 	name, ok := cmd["command"]
 	if !ok {
@@ -611,7 +631,6 @@ func (base *intermodeOmniBase) DoCommand(ctx context.Context, cmd map[string]int
 			gearFound := false
 			for _, v := range gears {
 				if v == byte(prnd) {
-					telemSet(telemGearDesired, v)
 					gearFound = true
 				}
 			}
@@ -626,11 +645,11 @@ func (base *intermodeOmniBase) DoCommand(ctx context.Context, cmd map[string]int
 	}
 }
 
-func (i intermodeOmniBase) Geometries(ctx context.Context, extra map[string]interface{}) ([]spatialmath.Geometry, error) {
+func (i intermodeBase) Geometries(ctx context.Context, extra map[string]interface{}) ([]spatialmath.Geometry, error) {
 	return i.geometries, nil
 }
 
-func (i *intermodeOmniBase) Name() resource.Name {
+func (i *intermodeBase) Name() resource.Name {
 	return resource.Name {
 		API:    	base.API,
 		Remote:	 	"test",
@@ -638,26 +657,76 @@ func (i *intermodeOmniBase) Name() resource.Name {
 	}
 }
 
-func (i *intermodeOmniBase) Reconfigure(context.Context, resource.Dependencies, resource.Config) error {
+func (i *intermodeBase) Reconfigure(context.Context, resource.Dependencies, resource.Config) error {
 	return nil
 }
 
-func (i *intermodeOmniBase) Properties(ctx context.Context, extra map[string]interface{}) (base.Properties, error) {
+func (i *intermodeBase) Properties(ctx context.Context, extra map[string]interface{}) (base.Properties, error) {
 	return base.Properties {
 		WidthMeters:				kVehicleTrackwidthMm/1000.0,
 		WheelCircumferenceMeters:  	kWheelCircumferenceMm/1000.0,
 	}, nil
 }
 
-func (base *intermodeOmniBase) IsMoving(ctx context.Context) (bool, error) {
+func (base *intermodeBase) IsMoving(ctx context.Context) (bool, error) {
 	return base.isMoving.Load(), nil
 }
 
-// Close cleanly closes the base.
-func (base *intermodeOmniBase) Close(ctx context.Context) error {
-	base.setNextCommand(ctx, &stopCmd)
-	base.cancel()
-	base.activeBackgroundWorkers.Wait()
+// newBase creates a new base that underneath the hood sends canbus frames via
+// a 10ms publishing loop.
+func newBase(conf resource.Config, logger golog.Logger) (base.Base, error) {
+	geometries, err := kinematicbase.CollisionGeometry(conf.Frame)
+    if err != nil {
+    }
 
-	return nil
+	socketSend, err := canbus.New()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := socketSend.Bind(channel); err != nil {
+		return nil, err
+	}
+
+	socketRecv, err := canbus.New()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := socketRecv.Bind(channel); err != nil {
+		return nil, err
+	}
+
+	cancelCtx, cancel := context.WithCancel(context.Background())
+    iBase := &intermodeBase{
+        name:        conf.Name,
+        canTxSocket: *socketSend,
+		nextCommandCh: make(chan canbus.Frame),
+        cancel:      cancel,
+        logger:      logger,
+        geometries: geometries,
+    }
+	iBase.isMoving.Store(false)
+
+	iBase.activeBackgroundWorkers.Add(1)
+	viamutils.ManagedGo(func() {
+		publishThread(cancelCtx, iBase.canTxSocket, iBase.nextCommandCh, logger)
+	}, iBase.activeBackgroundWorkers.Done)
+
+	return iBase, nil
+}
+
+// helper function to add the base's constructor and metadata to the component registry, so that we can later construct it.
+func registerBase() {
+	resource.RegisterComponent(
+		base.API,
+		model,
+		resource.Registration[resource.Resource, resource.NoNativeConfig]{Constructor: func(
+			ctx context.Context,
+			deps resource.Dependencies,
+			conf resource.Config,
+			logger golog.Logger,
+		) (resource.Resource, error) {
+			return newBase(conf, logger)
+		}})
 }
