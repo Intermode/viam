@@ -244,7 +244,7 @@ func (cmd *driveCommand) toFrame(logger golog.Logger) canbus.Frame {
 
 	frame.Data = append(frame.Data, calculateAccelAndBrakeBytes(cmd.Accelerator, cmd.Brake)...)
 	frame.Data = append(frame.Data, steeringAngleBytes...)	// Steering hard-coded to 0 as turning is handled by the wheels
-	frame.Data = append(frame.Data, cmd.Gear, cmd.DriveMode, cmd.SteerMode)
+	frame.Data = append(frame.Data, cmd.Gear | (cmd.DriveMode << 4), cmd.SteerMode)
 
 	logger.Debugw("frame", "data", frame.Data)
 
