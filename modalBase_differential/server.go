@@ -262,8 +262,8 @@ func (cmd *axleCommand) toFrame(logger golog.Logger) canbus.Frame {
 	}
 
 	// TODO: Remove magic number scalars
-	rightSpeedBytes := uint16(cmd.rightSpeed / 0.0625)
-	leftSpeedBytes := uint16(cmd.leftSpeed / 0.0625)
+	rightSpeedBytes := uint16(cmd.rightSpeed / 0.0078125)
+	leftSpeedBytes := uint16(cmd.leftSpeed / 0.0078125)
 	brakeBytes := uint16(cmd.Brake / 0.0625)
 	steeringAngleBytes := uint16(cmd.SteeringAngle / 0.0078125)
 
