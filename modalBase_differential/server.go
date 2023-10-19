@@ -447,8 +447,8 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 	base.isMoving.Store(true) // TODO: Replace with feedback info
 
 	// Some vector components do not apply to a 2D base
-	if 0 != linear.Y {
-		base.logger.Warnw("Linear Y command non-zero and has no effect")
+	if 0 != linear.X {
+		base.logger.Warnw("Linear X command non-zero and has no effect")
 	}
 	if 0 != linear.Z {
 		base.logger.Warnw("Linear Z command non-zero and has no effect")
@@ -460,12 +460,12 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 		base.logger.Warnw("Angular Y command non-zero and has no effect")
 	}
 
-	var linearMagnitude = linear.X
+	var linearMagnitude = linear.Y
 	// Angular multiplied by 0.5 because that is the max single-linear-direction magnitude
-	var rpmDesFr = math.Min(math.Sin(-1*math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angular.Z
-	var rpmDesFl = math.Min(math.Sin(math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angular.Z
-	var rpmDesRr = math.Min(math.Sin(math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angular.Z
-	var rpmDesRl = math.Min(math.Sin(-1*math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angular.Z
+	var rpmDesFr = linearMagnitude + angular.Z
+	var rpmDesFl = linearMagnitude - angular.Z
+	var rpmDesRr = linearMagnitude + angular.Z
+	var rpmDesRl = linearMagnitude - angular.Z
 	var rpmMax = math.Max(math.Max(rpmDesFr, rpmDesFl), math.Max(rpmDesRr, rpmDesRl))
 
 	if rpmMax > 1 {
