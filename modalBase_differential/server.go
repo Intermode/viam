@@ -19,7 +19,6 @@ import (
 	viamutils "go.viam.com/utils"
 
 	"go.viam.com/rdk/components/base"
-	"go.viam.com/rdk/components/base/kinematicbase"
 	_ "go.viam.com/rdk/components/generic"
 	"go.viam.com/rdk/module"
 	"go.viam.com/rdk/resource"
@@ -673,7 +672,7 @@ func (base *intermodeBase) DoCommand(ctx context.Context, cmd map[string]interfa
 	}
 }
 
-func (i intermodeBase) Geometries(ctx context.Context, extra map[string]interface{}) ([]spatialmath.Geometry, error) {
+func (i *intermodeBase) Geometries(ctx context.Context, extra map[string]interface{}) ([]spatialmath.Geometry, error) {
 	return i.geometries, nil
 }
 
@@ -703,8 +702,13 @@ func (base *intermodeBase) IsMoving(ctx context.Context) (bool, error) {
 // newBase creates a new base that underneath the hood sends canbus frames via
 // a 10ms publishing loop.
 func newBase(conf resource.Config, logger golog.Logger) (base.Base, error) {
-	geometries, err := kinematicbase.CollisionGeometry(conf.Frame)
-	if err != nil {
+	var geometries = []spatialmath.Geometry{}
+	if conf.Frame != nil {
+		frame, err := conf.Frame.ParseConfig()
+		if err != nil {
+			return nil, err
+		}
+		geometries = append(geometries, frame.Geometry())
 	}
 
 	socketSend, err := canbus.New()
