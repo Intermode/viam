@@ -541,6 +541,15 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 		base.logger.Warnw("Angular Y command non-zero and has no effect")
 	}
 
+	base.logger.Infow("Received command",
+		"linear X", linear.X,
+		"linear Y", linear.Y,
+		"linear Z", linear.Z,
+		"angular X", angular.X,
+		"angular Y", angular.Y,
+		"angular Z", angular.Z,
+	)
+
 	var rpmDesMagnitudeLinY = math.Abs(linear.Y / kWheelCircumferenceMm * 60)
 	rpmDesMagnitudeLinY = math.Min(float64(rpmDesMagnitudeLinY), kLimitSpeedMaxRpm)
 
