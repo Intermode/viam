@@ -528,18 +528,12 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 	// Print received command
 	//	Not a debug message to avoid activating all of the debug messages
 	base.logger.Infow("SetVelocity with "+
-		"linear.X: %.2f,  "+
-		"linear.Y: %.2f,  "+
-		"linear.Z: %.2f(mmPerSec),  "+
-		"angular.X: %.2f,  "+
-		"angular.Y: %.2f,  "+
-		"angular.Z: %.2f",
-		linear.X,
-		linear.Y,
-		linear.Z,
-		angular.X,
-		angular.Y,
-		angular.Z,
+		"linear.X", linear.X,
+		"linear.Y", linear.Y,
+		"linear.Z", linear.Z,
+		"angular.X", angular.X,
+		"angular.Y", angular.Y,
+		"angular.Z", angular.Z,
 	)
 
 	if linear.Norm() == 0 && angular.Norm() == 0 {
