@@ -19,10 +19,10 @@ import (
 	viamutils "go.viam.com/utils"
 
 	"go.viam.com/rdk/components/base"
+	"go.viam.com/rdk/components/base/kinematicbase"
 	_ "go.viam.com/rdk/components/generic"
 	"go.viam.com/rdk/module"
 	"go.viam.com/rdk/resource"
-	"go.viam.com/rdk/components/base/kinematicbase"
 	"go.viam.com/rdk/spatialmath"
 )
 
@@ -37,22 +37,21 @@ func main() {
 	goutils.ContextualMain(mainWithArgs, golog.NewDevelopmentLogger("intermodeBaseModule"))
 }
 
-///////////////
+// /////////////
 // Fail-Safe //
-///////////////
+// /////////////
 const commsTimeoutIntervalMs = 1000 // If it has been at least this long since last command received, execute containment
 var commsTimeout time.Time
-var commsTimeoutEnable = false		// Enable or disable comms timeout
-									// Presently changed based off of received command style
-
+var commsTimeoutEnable = false // Enable or disable comms timeout
+// Presently changed based off of received command style
 
 type driveCommand struct {
-	Accelerator   	float64
-	Brake         	float64
-	SteeringAngle 	float64
-	Gear          	byte
-	DriveMode     	byte
-	SteerMode     	byte
+	Accelerator   float64
+	Brake         float64
+	SteeringAngle float64
+	Gear          byte
+	DriveMode     byte
+	SteerMode     byte
 }
 
 type intermodeBase struct {
@@ -66,11 +65,11 @@ type intermodeBase struct {
 	geometries              []spatialmath.Geometry
 }
 type axleCommand struct {
-	canId				uint32
-	rightSpeed    	float64
-	leftSpeed     	float64
-	Brake         	float64
-	SteeringAngle 	float64
+	canId         uint32
+	rightSpeed    float64
+	leftSpeed     float64
+	Brake         float64
+	SteeringAngle float64
 }
 type modalCommand interface {
 	toFrame(logger golog.Logger) canbus.Frame
@@ -78,47 +77,47 @@ type modalCommand interface {
 
 var (
 	gears = map[string]byte{
-		gearPark:          	0,
-		gearReverse:       	1,
-		gearNeutral:       	2,
-		gearDrive:         	3,
-		gearEmergencyStop: 	4,
+		gearPark:          0,
+		gearReverse:       1,
+		gearNeutral:       2,
+		gearDrive:         3,
+		gearEmergencyStop: 4,
 	}
 	steerModes = map[string]byte{
-		steerModeFrontWheelSteer: 	0,
-		steerModeRearWheelSteer:  	1,
-		steerModeFourWheelSteer:  	2,
-		steerModeCrabSteering:    	3,
+		steerModeFrontWheelSteer: 0,
+		steerModeRearWheelSteer:  1,
+		steerModeFourWheelSteer:  2,
+		steerModeCrabSteering:    3,
 	}
 	driveModes = map[string]byte{
-		driveModeFourWheelDrive: 	0,
-		driveModeFrontWheelDrive:  	1,
-		driveModeRearWheelDrive:  	2,
-		driveModeIndAped:   		3,
+		driveModeFourWheelDrive:  0,
+		driveModeFrontWheelDrive: 1,
+		driveModeRearWheelDrive:  2,
+		driveModeIndAped:         3,
 	}
 
 	emergencyCmd = driveCommand{
-		Accelerator:   	0,
-		Brake:         	1,
-		SteeringAngle: 	0,
-		Gear:          	gears[gearEmergencyStop],
-		DriveMode:	   	driveModes[driveModeFourWheelDrive],
-		SteerMode:     	steerModes[steerModeFourWheelSteer],
+		Accelerator:   0,
+		Brake:         1,
+		SteeringAngle: 0,
+		Gear:          gears[gearEmergencyStop],
+		DriveMode:     driveModes[driveModeFourWheelDrive],
+		SteerMode:     steerModes[steerModeFourWheelSteer],
 	}
 	stopCmd = driveCommand{
-		Accelerator:   	0,
-		Brake:         	1,
-		SteeringAngle: 	0,
-		Gear:          	gears[gearPark],
-		DriveMode:	   	driveModes[driveModeFourWheelDrive],
-		SteerMode:     	steerModes[steerModeFourWheelSteer],
+		Accelerator:   0,
+		Brake:         1,
+		SteeringAngle: 0,
+		Gear:          gears[gearPark],
+		DriveMode:     driveModes[driveModeFourWheelDrive],
+		SteerMode:     steerModes[steerModeFourWheelSteer],
 	}
 )
 
 const (
 	channel = "can0"
 	// channel = "vcan0"
-	
+
 	// CAN IDs
 	kulCanIdCmdDrive uint32 = 0x220
 	kulCanIdCmdAxleF uint32 = 0x222
@@ -150,7 +149,7 @@ const (
 	kCanIdTelemBatteryPowerId uint32 = 0x250
 	kCanIdTelemBatteryStateId uint32 = 0x251
 
-	// Keys	
+	// Keys
 	gearPark          = "park"
 	gearReverse       = "reverse"
 	gearNeutral       = "neutral"
@@ -162,10 +161,10 @@ const (
 	steerModeFourWheelSteer  = "four-wheel-steer"
 	steerModeCrabSteering    = "crab-steering"
 
-	driveModeFourWheelDrive 	= "four-wheel-drive"
-	driveModeFrontWheelDrive 	= "front-wheel-drive"
-	driveModeRearWheelDrive 	= "rear-wheel-drive"
-	driveModeIndAped 			= "independent-aped-drive"
+	driveModeFourWheelDrive  = "four-wheel-drive"
+	driveModeFrontWheelDrive = "front-wheel-drive"
+	driveModeRearWheelDrive  = "rear-wheel-drive"
+	driveModeIndAped         = "independent-aped-drive"
 )
 
 var (
@@ -243,8 +242,8 @@ func (cmd *driveCommand) toFrame(logger golog.Logger) canbus.Frame {
 	binary.LittleEndian.PutUint16(steeringAngleBytes, 0)
 
 	frame.Data = append(frame.Data, calculateAccelAndBrakeBytes(cmd.Accelerator, cmd.Brake)...)
-	frame.Data = append(frame.Data, steeringAngleBytes...)	// Steering hard-coded to 0 as turning is handled by the wheels
-	frame.Data = append(frame.Data, cmd.Gear | (cmd.DriveMode << 4), cmd.SteerMode)
+	frame.Data = append(frame.Data, steeringAngleBytes...) // Steering hard-coded to 0 as turning is handled by the wheels
+	frame.Data = append(frame.Data, cmd.Gear|(cmd.DriveMode<<4), cmd.SteerMode)
 
 	logger.Debugw("frame", "data", frame.Data)
 
@@ -286,9 +285,9 @@ func (base *intermodeBase) setNextCommand(ctx context.Context, cmd modalCommand)
 	}
 
 	select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case base.nextCommandCh <- cmd.toFrame(base.logger):
+	case <-ctx.Done():
+		return ctx.Err()
+	case base.nextCommandCh <- cmd.toFrame(base.logger):
 	}
 
 	return nil
@@ -541,13 +540,19 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 		base.logger.Warnw("Angular Y command non-zero and has no effect")
 	}
 
-	base.logger.Infow("Received command",
-		"linear X", linear.X,
-		"linear Y", linear.Y,
-		"linear Z", linear.Z,
-		"angular X", angular.X,
-		"angular Y", angular.Y,
-		"angular Z", angular.Z,
+	base.logger.Infow("SetVelocity with "+
+		"linear.X: %.2f,  "+
+		"linear.Y: %.2f,  "+
+		"linear.Z: %.2f(mmPerSec),  "+
+		"angular.X: %.2f,  "+
+		"angular.Y: %.2f,  "+
+		"angular.Z: %.2f",
+		linear.X,
+		linear.Y,
+		linear.Z,
+		angular.X,
+		angular.Y,
+		angular.Z,
 	)
 
 	var rpmDesMagnitudeLinY = math.Abs(linear.Y / kWheelCircumferenceMm * 60)
@@ -633,31 +638,31 @@ func (base *intermodeBase) DoCommand(ctx context.Context, cmd map[string]interfa
 		return nil, errors.New("missing 'command' value")
 	}
 	switch name {
-		case "set_prnd":
-			prndRaw, ok := cmd["prnd"]
-			if !ok {
-				return nil, errors.New("prnd must be set to a byte corresponding to park|reverse|neutral|drive|estop")
-			}
-			// TODO: Figure out how to get this to arrive as a byte/int
-			prnd, ok := prndRaw.(float64)
-			if !ok {
-				return nil, errors.New(fmt.Sprintf("prnd value must be an int but is type %T", prndRaw))
-			}
+	case "set_prnd":
+		prndRaw, ok := cmd["prnd"]
+		if !ok {
+			return nil, errors.New("prnd must be set to a byte corresponding to park|reverse|neutral|drive|estop")
+		}
+		// TODO: Figure out how to get this to arrive as a byte/int
+		prnd, ok := prndRaw.(float64)
+		if !ok {
+			return nil, errors.New(fmt.Sprintf("prnd value must be an int but is type %T", prndRaw))
+		}
 
-			gearFound := false
-			for _, v := range gears {
-				if v == byte(prnd) {
-					gearFound = true
-				}
+		gearFound := false
+		for _, v := range gears {
+			if v == byte(prnd) {
+				gearFound = true
 			}
-			if !gearFound {
-				return nil, errors.New("prnd value must be an int corresponding to park|reverse|neutral|drive|estop")
-			}
+		}
+		if !gearFound {
+			return nil, errors.New("prnd value must be an int corresponding to park|reverse|neutral|drive|estop")
+		}
 
-			return map[string]interface{}{"return": fmt.Sprintf("set_prnd command processed: %f", prnd)}, nil
+		return map[string]interface{}{"return": fmt.Sprintf("set_prnd command processed: %f", prnd)}, nil
 
-		default:
-			return nil, fmt.Errorf("no such command: %s", name)
+	default:
+		return nil, fmt.Errorf("no such command: %s", name)
 	}
 }
 
@@ -666,10 +671,10 @@ func (i intermodeBase) Geometries(ctx context.Context, extra map[string]interfac
 }
 
 func (i *intermodeBase) Name() resource.Name {
-	return resource.Name {
-		API:    	base.API,
-		Remote:	 	"test",
-		Name:		"modal",
+	return resource.Name{
+		API:    base.API,
+		Remote: "test",
+		Name:   "modal",
 	}
 }
 
@@ -678,9 +683,9 @@ func (i *intermodeBase) Reconfigure(context.Context, resource.Dependencies, reso
 }
 
 func (i *intermodeBase) Properties(ctx context.Context, extra map[string]interface{}) (base.Properties, error) {
-	return base.Properties {
-		WidthMeters:				kVehicleTrackwidthMm/1000.0,
-		WheelCircumferenceMeters:  	kWheelCircumferenceMm/1000.0,
+	return base.Properties{
+		WidthMeters:              kVehicleTrackwidthMm / 1000.0,
+		WheelCircumferenceMeters: kWheelCircumferenceMm / 1000.0,
 	}, nil
 }
 
@@ -692,8 +697,8 @@ func (base *intermodeBase) IsMoving(ctx context.Context) (bool, error) {
 // a 10ms publishing loop.
 func newBase(conf resource.Config, logger golog.Logger) (base.Base, error) {
 	geometries, err := kinematicbase.CollisionGeometry(conf.Frame)
-    if err != nil {
-    }
+	if err != nil {
+	}
 
 	socketSend, err := canbus.New()
 	if err != nil {
@@ -714,14 +719,14 @@ func newBase(conf resource.Config, logger golog.Logger) (base.Base, error) {
 	}
 
 	cancelCtx, cancel := context.WithCancel(context.Background())
-    iBase := &intermodeBase{
-        name:        conf.Name,
-        canTxSocket: *socketSend,
+	iBase := &intermodeBase{
+		name:          conf.Name,
+		canTxSocket:   *socketSend,
 		nextCommandCh: make(chan canbus.Frame),
-        cancel:      cancel,
-        logger:      logger,
-        geometries: geometries,
-    }
+		cancel:        cancel,
+		logger:        logger,
+		geometries:    geometries,
+	}
 	iBase.isMoving.Store(false)
 
 	iBase.activeBackgroundWorkers.Add(1)
