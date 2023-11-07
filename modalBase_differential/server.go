@@ -526,20 +526,8 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
 	base.isMoving.Store(true) // TODO: Replace with feedback info
 
-	// Some vector components do not apply to a 2D base
-	if 0 != linear.X {
-		base.logger.Warnw("Linear X command non-zero and has no effect")
-	}
-	if 0 != linear.Z {
-		base.logger.Warnw("Linear Z command non-zero and has no effect")
-	}
-	if 0 != angular.X {
-		base.logger.Warnw("Angular X command non-zero and has no effect")
-	}
-	if 0 != angular.Y {
-		base.logger.Warnw("Angular Y command non-zero and has no effect")
-	}
-
+	// Print received command
+	//	Not a debug message to avoid activating all of the debug messages
 	base.logger.Infow("SetVelocity with "+
 		"linear.X: %.2f,  "+
 		"linear.Y: %.2f,  "+
@@ -554,6 +542,25 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 		angular.Y,
 		angular.Z,
 	)
+
+	if linear.Norm() == 0 && angular.Norm() == 0 {
+		base.logger.Debug("received a SetVelocity command of linear 0,0,0, and angular 0,0,0, stopping base")
+		return base.Stop(ctx, nil)
+	}
+
+	// Some vector components do not apply to a 2D base
+	if 0 != linear.X {
+		base.logger.Warnw("Linear X command non-zero and has no effect")
+	}
+	if 0 != linear.Z {
+		base.logger.Warnw("Linear Z command non-zero and has no effect")
+	}
+	if 0 != angular.X {
+		base.logger.Warnw("Angular X command non-zero and has no effect")
+	}
+	if 0 != angular.Y {
+		base.logger.Warnw("Angular Y command non-zero and has no effect")
+	}
 
 	var rpmDesMagnitudeLinY = math.Abs(linear.Y / kWheelCircumferenceMm * 60)
 	rpmDesMagnitudeLinY = math.Min(float64(rpmDesMagnitudeLinY), kLimitSpeedMaxRpm)
