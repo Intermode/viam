@@ -54,14 +54,20 @@ type driveCommand struct {
 }
 
 type intermodeBase struct {
+	resource.Named
+	
+	trackWidthMm         float64
+	wheelCircumferenceMm float64
+	geometries           []spatialmath.Geometry
+	
 	name                    string
+	logger                  golog.Logger
+
 	canTxSocket             canbus.Socket
 	nextCommandCh           chan canbus.Frame
 	isMoving                atomic.Bool
 	activeBackgroundWorkers sync.WaitGroup
 	cancel                  func()
-	logger                  golog.Logger
-	geometries              []spatialmath.Geometry
 }
 type axleCommand struct {
 	canId         uint32
@@ -555,29 +561,12 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 		base.logger.Warnw("Angular Y command non-zero and has no effect")
 	}
 
-	var rpmDesMagnitudeLinY = math.Abs(linear.Y / kWheelCircumferenceMm * 60)
-	rpmDesMagnitudeLinY = math.Min(float64(rpmDesMagnitudeLinY), kLimitSpeedMaxRpm)
+	// TODO: Add support for four wheel differential
+	rpmDesLeft, rpmDesRight := base.velocityMath(linear.Y, angular.Z)
 
-	var rpmDesMagnitudeAngZ = math.Abs(angular.Z / 360 * 60 * kWheelRevPerVehicleRev)
-	rpmDesMagnitudeAngZ = math.Min(rpmDesMagnitudeAngZ, kLimitSpeedMaxRpm)
-
-	var linearYNormal = math.Min(rpmDesMagnitudeLinY/kLimitSpeedMaxRpm, 1)
-	var angularZNormal = math.Min(rpmDesMagnitudeAngZ/kLimitSpeedMaxRpm, 1)
-
-	var linearMagnitude = linearYNormal
-	var linearAngle = math.Atan2(linear.Y, 0)
-	var rpmDesFr = math.Min(math.Sin(linearAngle-math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angularZNormal
-	var rpmDesFl = math.Min(math.Sin(linearAngle+math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angularZNormal
-	var rpmDesRr = math.Min(math.Sin(linearAngle+math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude + angularZNormal
-	var rpmDesRl = math.Min(math.Sin(linearAngle-math.Pi/4)*math.Sqrt(2), 1)*linearMagnitude - angularZNormal
-	var rpmMax = math.Max(math.Max(rpmDesFr, rpmDesFl), math.Max(rpmDesRr, rpmDesRl))
-
-	if rpmMax > 1 {
-		rpmDesFr /= rpmMax
-		rpmDesFl /= rpmMax
-		rpmDesRr /= rpmMax
-		rpmDesRl /= rpmMax
-	}
+	// Limit wheel RPM to +/-kLimitSpeedMaxRpm
+	rpmDesLeft = math.Min(math.Max(rpmDesLeft, -kLimitSpeedMaxRpm), kLimitSpeedMaxRpm)
+	rpmDesRight = math.Min(math.Max(rpmDesRight, -kLimitSpeedMaxRpm), kLimitSpeedMaxRpm)
 
 	var driveCmd = driveCommand{
 		Accelerator:   0,
@@ -598,13 +587,14 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 	// TODO: Switch to actually using speed instead of a percentage
 	//		 Currently treating this as an Aped command at the base side
 	frontCmd.canId = kulCanIdCmdAxleF
-	frontCmd.rightSpeed = rpmDesFr * 100.0
-	frontCmd.leftSpeed = rpmDesFl * 100.0
+	frontCmd.rightSpeed = rpmDesRight / kLimitSpeedMaxRpm * 100.0
+	frontCmd.leftSpeed = rpmDesLeft / kLimitSpeedMaxRpm * 100.0
 	rearCmd.canId = kulCanIdCmdAxleR
-	rearCmd.rightSpeed = rpmDesRr * 100.0
-	rearCmd.leftSpeed = rpmDesRl * 100.0
+	rearCmd.rightSpeed = rpmDesRight / kLimitSpeedMaxRpm * 100.0
+	rearCmd.leftSpeed = rpmDesLeft / kLimitSpeedMaxRpm * 100.0
 
-	if 0 > linearMagnitude {
+	// TODO: Block this on the base side for independent wheel control
+	if 0 > linear.Y {
 		driveCmd.Gear = gears[gearReverse]
 	}
 
@@ -622,6 +612,25 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 	}
 
 	return nil
+}
+
+// calcualtes wheel rpms from overall base linear and angular movement velocity inputs.
+// From Viam wheeled_base RDK implementation
+func (base *intermodeBase) velocityMath(mmPerSec, degsPerSec float64) (float64, float64) {
+	// Base calculations
+	linearVelocity := mmPerSec
+	wheelRadius := base.wheelCircumferenceMm / (2.0 * math.Pi)
+	trackWidth := base.trackWidthMm
+
+	angularVelocity := degsPerSec / 180 * math.Pi
+	leftAngularVelocity := (linearVelocity / wheelRadius) - (trackWidth * angularVelocity / (2 * wheelRadius))
+	rightAngularVelocity := (linearVelocity / wheelRadius) + (trackWidth * angularVelocity / (2 * wheelRadius))
+
+	// RPM = revolutions (unit) * deg/sec * (1 rot / 2pi deg) * (60 sec / 1 min) = rot/min
+	rpmL := (leftAngularVelocity / (2 * math.Pi)) * 60
+	rpmR := (rightAngularVelocity / (2 * math.Pi)) * 60
+
+	return rpmL, rpmR
 }
 
 // Stop stops the base. It is assumed the base stops immediately.
@@ -731,6 +740,10 @@ func newBase(conf resource.Config, logger golog.Logger) (base.Base, error) {
 		cancel:        cancel,
 		logger:        logger,
 		geometries:    geometries,
+
+		Named:                conf.ResourceName().AsNamed(),
+		trackWidthMm:         kVehicleTrackwidthMm,
+		wheelCircumferenceMm: kWheelCircumferenceMm,
 	}
 	iBase.isMoving.Store(false)
 
