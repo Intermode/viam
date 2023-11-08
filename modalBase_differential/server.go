@@ -535,7 +535,7 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 
 	// Print received command
 	//	Not a debug message to avoid activating all of the debug messages
-	base.logger.Infow("SetVelocity with "+
+	base.logger.Infow("SetVelocity with ",
 		"linear.X", linear.X,
 		"linear.Y", linear.Y,
 		"linear.Z", linear.Z,
