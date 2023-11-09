@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/edaniels/golog"
 	"github.com/go-daq/canbus"
 	"github.com/golang/geo/r3"
 	"github.com/pkg/errors"
@@ -20,6 +19,7 @@ import (
 
 	"go.viam.com/rdk/components/base"
 	_ "go.viam.com/rdk/components/generic"
+	"go.viam.com/rdk/logging"
 	"go.viam.com/rdk/module"
 	"go.viam.com/rdk/resource"
 	"go.viam.com/rdk/spatialmath"
@@ -33,7 +33,7 @@ const SPEED_LIMP_HOME = 20.0 // Max speed (throttle) if a limp home condition is
 var model = resource.NewModel("intermode", "modal", "omnidirectional")
 
 func main() {
-	goutils.ContextualMain(mainWithArgs, golog.NewDevelopmentLogger("intermodeBaseModule"))
+	goutils.ContextualMain(mainWithArgs, logging.NewDebugLogger("intermodeBaseModule"))
 }
 
 // /////////////
@@ -55,14 +55,14 @@ type driveCommand struct {
 
 type intermodeBase struct {
 	resource.Named
-	
+
 	trackWidthMm         float64
 	wheelCircumferenceMm float64
-	gearRatio		 	 float64
+	gearRatio            float64
 	geometries           []spatialmath.Geometry
-	
-	name                    string
-	logger                  golog.Logger
+
+	name   string
+	logger logging.Logger
 
 	canTxSocket             canbus.Socket
 	nextCommandCh           chan canbus.Frame
@@ -78,7 +78,7 @@ type axleCommand struct {
 	SteeringAngle float64
 }
 type modalCommand interface {
-	toFrame(logger golog.Logger) canbus.Frame
+	toFrame(logger logging.Logger) canbus.Frame
 }
 
 var (
@@ -144,11 +144,11 @@ const (
 	kMagnitudeMaxY float64 = 1
 
 	// Limits and defaults
-	kLimitCurrentMax  = 5                                                        // Maximum motor current
-	kLimitSpeedMaxKph = 5                                                        // Max speed in KPH
-	kGearRatio        = 3.0                                                      // Gear ratio of motor to wheel
-	kLimitSpeedMaxRpm = kLimitSpeedMaxKph * 1000000 / kWheelCircumferenceMm / 60 * kGearRatio	// Max speed in RPM
-	kDefaultCurrent   = kLimitCurrentMax                                         // Used for straight and spin commands
+	kLimitCurrentMax  = 5                                                                     // Maximum motor current
+	kLimitSpeedMaxKph = 5                                                                     // Max speed in KPH
+	kGearRatio        = 3.0                                                                   // Gear ratio of motor to wheel
+	kLimitSpeedMaxRpm = kLimitSpeedMaxKph * 1000000 / kWheelCircumferenceMm / 60 * kGearRatio // Max speed in RPM
+	kDefaultCurrent   = kLimitCurrentMax                                                      // Used for straight and spin commands
 
 	kNumBitsPerByte = 8
 
@@ -185,7 +185,7 @@ var (
 	kWheelRevPerVehicleRev = kVehicleTirePatchCircumferenceMm / kWheelCircumferenceMm
 )
 
-func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err error) {
+func mainWithArgs(ctx context.Context, args []string, logger logging.Logger) (err error) {
 	registerBase()
 	modalModule, err := module.NewModuleFromArgs(ctx, logger)
 	if err != nil {
@@ -238,7 +238,7 @@ func calculateAccelAndBrakeBytes(accelPct float64, brakePct float64) []byte {
 /*
  * Convert a drive command to a CAN frame
  */
-func (cmd *driveCommand) toFrame(logger golog.Logger) canbus.Frame {
+func (cmd *driveCommand) toFrame(logger logging.Logger) canbus.Frame {
 	frame := canbus.Frame{
 		ID:   kulCanIdCmdDrive,
 		Data: make([]byte, 0, 8),
@@ -260,7 +260,7 @@ func (cmd *driveCommand) toFrame(logger golog.Logger) canbus.Frame {
 /*
  * Convert an axle command to a CAN frame
  */
-func (cmd *axleCommand) toFrame(logger golog.Logger) canbus.Frame {
+func (cmd *axleCommand) toFrame(logger logging.Logger) canbus.Frame {
 	frame := canbus.Frame{
 		ID:   cmd.canId,
 		Data: make([]byte, 8),
@@ -314,7 +314,7 @@ func publishThread(
 	ctx context.Context,
 	socket canbus.Socket,
 	nextCommandCh chan canbus.Frame,
-	logger golog.Logger,
+	logger logging.Logger,
 ) {
 	defer socket.Close()
 	commsTimeout = time.Now().Add(commsTimeoutIntervalMs * time.Millisecond)
@@ -706,7 +706,7 @@ func (base *intermodeBase) IsMoving(ctx context.Context) (bool, error) {
 
 // newBase creates a new base that underneath the hood sends canbus frames via
 // a 10ms publishing loop.
-func newBase(conf resource.Config, logger golog.Logger) (base.Base, error) {
+func newBase(conf resource.Config, logger logging.Logger) (base.Base, error) {
 	var geometries = []spatialmath.Geometry{}
 	if conf.Frame != nil {
 		frame, err := conf.Frame.ParseConfig()
@@ -746,7 +746,7 @@ func newBase(conf resource.Config, logger golog.Logger) (base.Base, error) {
 		Named:                conf.ResourceName().AsNamed(),
 		trackWidthMm:         kVehicleTrackwidthMm,
 		wheelCircumferenceMm: kWheelCircumferenceMm,
-		gearRatio:			  kGearRatio,
+		gearRatio:            kGearRatio,
 	}
 	iBase.isMoving.Store(false)
 
@@ -767,7 +767,7 @@ func registerBase() {
 			ctx context.Context,
 			deps resource.Dependencies,
 			conf resource.Config,
-			logger golog.Logger,
+			logger logging.Logger,
 		) (resource.Resource, error) {
 			return newBase(conf, logger)
 		}})
