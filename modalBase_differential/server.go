@@ -252,7 +252,7 @@ func (cmd *driveCommand) toFrame(logger logging.Logger) canbus.Frame {
 	frame.Data = append(frame.Data, steeringAngleBytes...) // Steering hard-coded to 0 as turning is handled by the wheels
 	frame.Data = append(frame.Data, cmd.Gear|(cmd.DriveMode<<4), cmd.SteerMode)
 
-	// logger.Debugw("frame", "data", frame.Data)
+	logger.Debugw("frame", "data", frame.Data)
 
 	return frame
 }
@@ -288,11 +288,13 @@ func (cmd *axleCommand) toFrame(logger logging.Logger) canbus.Frame {
  */
 func (base *intermodeBase) setNextCommand(ctx context.Context, cmd modalCommand) error {
 	if err := ctx.Err(); err != nil {
+		base.logger.Infow("Ctx err in setNextCommand()")
 		return err
 	}
 
 	select {
 	case <-ctx.Done():
+		base.logger.Infow("Ctx done in setNextCommand()")
 		return ctx.Err()
 	case base.nextCommandCh <- cmd.toFrame(base.logger):
 	}
@@ -596,22 +598,24 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 	rearCmd.leftSpeed = rpmDesLeft / kLimitSpeedMaxRpm * 100.0
 
 	// TODO: Block this on the base side for independent wheel control
-	if 0 > linear.Y {
-		driveCmd.Gear = gears[gearReverse]
-	}
+	// if 0 > linear.Y {
+	// 	driveCmd.Gear = gears[gearReverse]
+	// }
 
 	if err := base.setNextCommand(ctx, &driveCmd); err != nil {
-		base.logger.Errorw("Error setting SetPower command", "error", err)
+		base.logger.Errorw("Error setting SetVelocity command", "error", err)
 		return err
 	}
 	if err := base.setNextCommand(ctx, &frontCmd); err != nil {
-		base.logger.Errorw("Error setting SetPower command", "error", err)
+		base.logger.Errorw("Error setting SetVelocity command", "error", err)
 		return err
 	}
 	if err := base.setNextCommand(ctx, &rearCmd); err != nil {
-		base.logger.Errorw("Error setting SetPower command", "error", err)
+		base.logger.Errorw("Error setting SetVelocity command", "error", err)
 		return err
 	}
+
+	base.logger.Infow("SetVelocity return")
 
 	return nil
 }
@@ -638,7 +642,10 @@ func (base *intermodeBase) velocityMath(mmPerSec, degsPerSec float64) (float64, 
 // Stop stops the base. It is assumed the base stops immediately.
 func (base *intermodeBase) Stop(ctx context.Context, extra map[string]interface{}) error {
 	base.isMoving.Store(false)
-	return base.setNextCommand(ctx, &stopCmd)
+	base.logger.Infow("Stopping")
+	ret := base.setNextCommand(ctx, &stopCmd)
+	base.logger.Infow("Stopped")
+	return ret
 }
 
 // DoCommand executes additional commands beyond the Base{} interface. For this rover that includes door open and close commands.
