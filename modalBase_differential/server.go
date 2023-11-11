@@ -278,7 +278,7 @@ func (cmd *axleCommand) toFrame(logger logging.Logger) canbus.Frame {
 	binary.LittleEndian.PutUint16(frame.Data[4:6], brakeBytes)
 	binary.LittleEndian.PutUint16(frame.Data[6:8], steeringAngleBytes)
 
-	// logger.Debugw("frame", "data", frame.Data)
+	logger.Debugw("frame", "data", frame.Data)
 
 	return frame
 }
