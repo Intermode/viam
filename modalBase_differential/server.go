@@ -572,6 +572,10 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 	rpmDesLeft = math.Min(math.Max(rpmDesLeft, -kLimitSpeedMaxRpm), kLimitSpeedMaxRpm)
 	rpmDesRight = math.Min(math.Max(rpmDesRight, -kLimitSpeedMaxRpm), kLimitSpeedMaxRpm)
 
+	// Convert RPM to KPH
+	//	Temporary until the base can handle RPM directly
+	kphDesLeft, kphDesRight := base.rpmToKph(rpmDesLeft, rpmDesRight)
+
 	var driveCmd = driveCommand{
 		Accelerator:   0,
 		Brake:         0,
@@ -591,11 +595,11 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 	// TODO: Switch to actually using speed instead of a percentage
 	//		 Currently treating this as an Aped command at the base side
 	frontCmd.canId = kulCanIdCmdAxleF
-	frontCmd.rightSpeed = rpmDesRight / kLimitSpeedMaxRpm * 100.0
-	frontCmd.leftSpeed = rpmDesLeft / kLimitSpeedMaxRpm * 100.0
+	frontCmd.rightSpeed = kphDesRight
+	frontCmd.leftSpeed = kphDesLeft
 	rearCmd.canId = kulCanIdCmdAxleR
-	rearCmd.rightSpeed = rpmDesRight / kLimitSpeedMaxRpm * 100.0
-	rearCmd.leftSpeed = rpmDesLeft / kLimitSpeedMaxRpm * 100.0
+	rearCmd.rightSpeed = kphDesRight
+	rearCmd.leftSpeed = kphDesLeft
 
 	// TODO: Block this on the base side for independent wheel control
 	// if 0 > linear.Y {
@@ -637,6 +641,15 @@ func (base *intermodeBase) velocityMath(mmPerSec, degsPerSec float64) (float64, 
 	rpmR := (rightAngularVelocity / (2 * math.Pi)) * 60
 
 	return rpmL, rpmR
+}
+
+// Converts RPM to KPH
+func (base *intermodeBase) rpmToKph(rpmL, rpmR float64) (float64, float64) {
+	// Converts RPM to KPH
+	kphL := rpmL * base.wheelCircumferenceMm / 1000.0 * 60.0 / 1000000.0
+	kphR := rpmR * base.wheelCircumferenceMm / 1000.0 * 60.0 / 1000000.0
+
+	return kphL, kphR
 }
 
 // Stop stops the base. It is assumed the base stops immediately.
