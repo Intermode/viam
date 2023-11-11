@@ -631,14 +631,15 @@ func (base *intermodeBase) velocityMath(mmPerSec, degsPerSec float64) (float64, 
 	linearVelocity := mmPerSec
 	wheelRadius := base.wheelCircumferenceMm / (2.0 * math.Pi)
 	trackWidth := base.trackWidthMm
+	gearRatioInToOut := base.gearRatioInToOut
 
 	angularVelocity := degsPerSec / 180 * math.Pi
 	leftAngularVelocity := (linearVelocity / wheelRadius) - (trackWidth * angularVelocity / (2 * wheelRadius))
 	rightAngularVelocity := (linearVelocity / wheelRadius) + (trackWidth * angularVelocity / (2 * wheelRadius))
 
-	// RPM = revolutions (unit) * deg/sec * (1 rot / 2pi deg) * (60 sec / 1 min) = rot/min
-	rpmL := (leftAngularVelocity / (2 * math.Pi)) * 60
-	rpmR := (rightAngularVelocity / (2 * math.Pi)) * 60
+	// RPM = revolutions (unit) * deg/sec * gear ratio * (1 rot / 2pi deg) * (60 sec / 1 min) = rot/min
+	rpmL := (leftAngularVelocity * gearRatioInToOut / (2 * math.Pi)) * 60
+	rpmR := (rightAngularVelocity *gearRatioInToOut / (2 * math.Pi)) * 60
 
 	return rpmL, rpmR
 }
