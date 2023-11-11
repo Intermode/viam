@@ -58,7 +58,7 @@ type intermodeBase struct {
 
 	trackWidthMm         float64
 	wheelCircumferenceMm float64
-	gearRatio            float64
+	gearRatioInToOut     float64
 	geometries           []spatialmath.Geometry
 
 	name   string
@@ -146,8 +146,8 @@ const (
 	// Limits and defaults
 	kLimitCurrentMax  = 5                                                                     // Maximum motor current
 	kLimitSpeedMaxKph = 5                                                                     // Max speed in KPH
-	kGearRatio        = 3.0                                                                   // Gear ratio of motor to wheel
-	kLimitSpeedMaxRpm = kLimitSpeedMaxKph * 1000000 / kWheelCircumferenceMm / 60 * kGearRatio // Max speed in RPM
+	kGearRatioInToOut        = 3.0                                                                   // Gear ratio of motor to wheel
+	kLimitSpeedMaxRpm = kLimitSpeedMaxKph * 1000000 / kWheelCircumferenceMm / 60 * kGearRatioInToOut // Max speed in RPM
 	kDefaultCurrent   = kLimitCurrentMax                                                      // Used for straight and spin commands
 
 	kNumBitsPerByte = 8
@@ -766,7 +766,7 @@ func newBase(conf resource.Config, logger logging.Logger) (base.Base, error) {
 		Named:                conf.ResourceName().AsNamed(),
 		trackWidthMm:         kVehicleTrackwidthMm,
 		wheelCircumferenceMm: kWheelCircumferenceMm,
-		gearRatio:            kGearRatio,
+		gearRatioInToOut:            kGearRatioInToOut,
 	}
 	iBase.isMoving.Store(false)
 
