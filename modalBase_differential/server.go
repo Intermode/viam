@@ -100,6 +100,7 @@ var (
 		driveModeFrontWheelDrive: 1,
 		driveModeRearWheelDrive:  2,
 		driveModeIndAped:         3,
+		driveModeIndKph:          4,
 	}
 
 	emergencyCmd = driveCommand{
@@ -581,7 +582,7 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 		Brake:         0,
 		SteeringAngle: 0,
 		Gear:          gears[gearDrive],
-		DriveMode:     driveModes[driveModeIndAped],
+		DriveMode:     driveModes[driveModeIndKph],
 		SteerMode:     steerModes[steerModeFourWheelSteer],
 	}
 	var axleCmd = axleCommand{
