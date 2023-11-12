@@ -456,6 +456,17 @@ func (base *intermodeBase) Spin(ctx context.Context, angleDeg, degsPerSec float6
 func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
 	base.isMoving.Store(true) // TODO: Replace with feedback info
 
+	// Print received command
+	//	Not a debug message to avoid activating all of the debug messages
+	base.logger.Infow("SetPower with ",
+		"linear.X", linear.X,
+		"linear.Y", linear.Y,
+		"linear.Z", linear.Z,
+		"angular.X", angular.X,
+		"angular.Y", angular.Y,
+		"angular.Z", angular.Z,
+	)
+
 	// Some vector components do not apply to a 2D base
 	if 0 != linear.X {
 		base.logger.Warnw("Linear X command non-zero and has no effect")
@@ -641,7 +652,7 @@ func (base *intermodeBase) velocityMath(mmPerSec, degsPerSec float64) (float64, 
 
 	// RPM = revolutions (unit) * deg/sec * gear ratio * (1 rot / 2pi deg) * (60 sec / 1 min) = rot/min
 	rpmL := (leftAngularVelocity * gearRatioInToOut / (2 * math.Pi)) * 60
-	rpmR := (rightAngularVelocity *gearRatioInToOut / (2 * math.Pi)) * 60
+	rpmR := (rightAngularVelocity * gearRatioInToOut / (2 * math.Pi)) * 60
 
 	return rpmL, rpmR
 }
@@ -649,8 +660,15 @@ func (base *intermodeBase) velocityMath(mmPerSec, degsPerSec float64) (float64, 
 // Converts RPM to KPH
 func (base *intermodeBase) rpmToKph(rpmL, rpmR float64) (float64, float64) {
 	// Converts RPM to KPH
-	kphL := rpmL * base.wheelCircumferenceMm / 1000.0 * 60.0 / 1000000.0
-	kphR := rpmR * base.wheelCircumferenceMm / 1000.0 * 60.0 / 1000000.0
+	//  KPH = RPM * Wheel Circumference (mm) / (1 km / 1000000 mm) * (60 min / hr)
+	var kphL float64 = rpmL * base.wheelCircumferenceMm / 1000000.0 * 60.0
+	var kphR float64 = rpmR * base.wheelCircumferenceMm / 1000000.0 * 60.0
+
+	base.logger.Debugw("RPM to KPH conversion",
+	"rpmL", rpmL,
+	"rpmR", rpmR,
+	"kphL", kphL,
+	"kphR", kphR)
 
 	return kphL, kphR
 }
