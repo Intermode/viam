@@ -173,6 +173,7 @@ const (
 	driveModeFrontWheelDrive = "front-wheel-drive"
 	driveModeRearWheelDrive  = "rear-wheel-drive"
 	driveModeIndAped         = "independent-aped-drive"
+	driveModeIndKph			 = "independent-kph-drive"
 )
 
 var (
