@@ -481,27 +481,20 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 		base.logger.Warnw("Angular Y command non-zero and has no effect")
 	}
 
-	var linearMagnitude = linear.Y
-	// Angular multiplied by 0.5 because that is the max single-linear-direction magnitude
-	var rpmDesFr = linearMagnitude + angular.Z
-	var rpmDesFl = linearMagnitude - angular.Z
-	var rpmDesRr = linearMagnitude + angular.Z
-	var rpmDesRl = linearMagnitude - angular.Z
-	var rpmMax = math.Max(math.Max(rpmDesFr, rpmDesFl), math.Max(rpmDesRr, rpmDesRl))
+	// TODO: Add support for four wheel differential
+	powerDesLeft, powerDesRight := base.differentialDrive(linear.Y, angular.Z)
 
-	if rpmMax > 1 {
-		rpmDesFr /= rpmMax
-		rpmDesFl /= rpmMax
-		rpmDesRr /= rpmMax
-		rpmDesRl /= rpmMax
-	}
+	// Convert power percentage to KPH
+	//	Temporary until the base can handle power directly
+	kphDesLeft := powerDesLeft * kLimitSpeedMaxRpm
+	kphDesRight := powerDesRight * kLimitSpeedMaxRpm
 
 	var driveCmd = driveCommand{
 		Accelerator:   0,
 		Brake:         0,
 		SteeringAngle: 0,
 		Gear:          gears[gearDrive],
-		DriveMode:     driveModes[driveModeIndAped],
+		DriveMode:     driveModes[driveModeIndKph],
 		SteerMode:     steerModes[steerModeFourWheelSteer],
 	}
 	var axleCmd = axleCommand{
@@ -515,15 +508,11 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 	// TODO: Switch to actually using speed instead of a percentage
 	//		 Currently treating this as an Aped command at the base side
 	frontCmd.canId = kulCanIdCmdAxleF
-	frontCmd.rightSpeed = rpmDesFr * 100.0
-	frontCmd.leftSpeed = rpmDesFl * 100.0
+	frontCmd.rightSpeed = kphDesRight
+	frontCmd.leftSpeed = kphDesLeft
 	rearCmd.canId = kulCanIdCmdAxleR
-	rearCmd.rightSpeed = rpmDesRr * 100.0
-	rearCmd.leftSpeed = rpmDesRl * 100.0
-
-	if 0 > linearMagnitude {
-		driveCmd.Gear = gears[gearReverse]
-	}
+	rearCmd.rightSpeed = kphDesRight
+	rearCmd.leftSpeed = kphDesLeft
 
 	if err := base.setNextCommand(ctx, &driveCmd); err != nil {
 		base.logger.Errorw("Error setting SetPower command", "error", err)
@@ -635,6 +624,46 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 	base.logger.Infow("SetVelocity return")
 
 	return nil
+}
+
+// differentialDrive takes forward and left direction inputs from a first person
+// perspective on a 2D plane and converts them to left and right motor powers. negative
+// forward means backward and negative left means right.
+// From Viam wheeled_base RDK implementation
+func (base *intermodeBase) differentialDrive(forward, left float64) (float64, float64) {
+	if forward < 0 {
+		// Mirror the forward turning arc if we go in reverse
+		leftMotor, rightMotor := base.differentialDrive(-forward, left)
+		return -leftMotor, -rightMotor
+	}
+
+	// convert to polar coordinates
+	r := math.Hypot(forward, left)
+	t := math.Atan2(left, forward)
+
+	// rotate by 45 degrees
+	t += math.Pi / 4
+	if t == 0 {
+		// HACK: Fixes a weird ATAN2 corner case. Ensures that when motor that is on the
+		// same side as the turn has the same power when going left and right. Without
+		// this, the right motor has ZERO power when going forward/backward turning
+		// right, when it should have at least some very small value.
+		t += 1.224647e-16 / 2
+	}
+
+	// convert to cartesian
+	leftMotor := r * math.Cos(t)
+	rightMotor := r * math.Sin(t)
+
+	// rescale the new coords
+	leftMotor *= math.Sqrt(2)
+	rightMotor *= math.Sqrt(2)
+
+	// clamp to -1/+1
+	leftMotor = math.Max(-1, math.Min(leftMotor, 1))
+	rightMotor = math.Max(-1, math.Min(rightMotor, 1))
+
+	return leftMotor, rightMotor
 }
 
 // calcualtes wheel rpms from overall base linear and angular movement velocity inputs.
