@@ -486,8 +486,10 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 
 	// Convert power percentage to KPH
 	//	Temporary until the base can handle power directly
-	kphDesLeft := powerDesLeft * kLimitSpeedMaxRpm
-	kphDesRight := powerDesRight * kLimitSpeedMaxRpm
+	rpmDesLeft := powerDesLeft * kLimitSpeedMaxRpm
+	rpmDesRight := powerDesRight * kLimitSpeedMaxRpm
+
+	kphDesLeft, kphDesRight := base.rpmToKph(rpmDesLeft, rpmDesRight)
 
 	var driveCmd = driveCommand{
 		Accelerator:   0,
