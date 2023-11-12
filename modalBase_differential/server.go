@@ -146,7 +146,7 @@ const (
 
 	// Limits and defaults
 	kLimitCurrentMax  = 5                                                                     // Maximum motor current
-	kLimitSpeedMaxKph = 5                                                                     // Max speed in KPH
+	kLimitSpeedMaxKph = 10                                                                     // Max speed in KPH
 	kGearRatioInToOut        = 3.0                                                                   // Gear ratio of motor to wheel
 	kLimitSpeedMaxRpm = kLimitSpeedMaxKph * 1000000 / kWheelCircumferenceMm / 60 * kGearRatioInToOut // Max speed in RPM
 	kDefaultCurrent   = kLimitCurrentMax                                                      // Used for straight and spin commands
