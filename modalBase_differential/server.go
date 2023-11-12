@@ -660,9 +660,9 @@ func (base *intermodeBase) velocityMath(mmPerSec, degsPerSec float64) (float64, 
 // Converts RPM to KPH
 func (base *intermodeBase) rpmToKph(rpmL, rpmR float64) (float64, float64) {
 	// Converts RPM to KPH
-	//  KPH = RPM * Wheel Circumference (mm) / (1 km / 1000000 mm) * (60 min / hr)
-	var kphL float64 = rpmL * base.wheelCircumferenceMm / 1000000.0 * 60.0
-	var kphR float64 = rpmR * base.wheelCircumferenceMm / 1000000.0 * 60.0
+	//  KPH = RPM / (In:out gear ratio) * Wheel Circumference (mm) / (1 km / 1000000 mm) * (60 min / hr)
+	var kphL float64 = rpmL / base.gearRatioInToOut * base.wheelCircumferenceMm / 1000000.0 * 60.0
+	var kphR float64 = rpmR / base.gearRatioInToOut * base.wheelCircumferenceMm / 1000000.0 * 60.0
 
 	base.logger.Debugw("RPM to KPH conversion",
 	"rpmL", rpmL,
