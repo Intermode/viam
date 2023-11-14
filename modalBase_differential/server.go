@@ -639,7 +639,7 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 // forward means backward and negative left means right.
 // From Viam wheeled_base RDK implementation
 func (base *intermodeBase) differentialDrive(forward, left float64) (float64, float64) {
-	if forward < 0 {
+	if forward > 0 {
 		// Mirror the forward turning arc if we go in reverse
 		leftMotor, rightMotor := base.differentialDrive(-forward, left)
 		return -leftMotor, -rightMotor
