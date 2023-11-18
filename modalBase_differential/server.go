@@ -145,11 +145,12 @@ const (
 	kMagnitudeMaxY float64 = 1
 
 	// Limits and defaults
-	kLimitCurrentMax  = 5                                                                     // Maximum motor current
-	kLimitSpeedMaxKph = 10                                                                     // Max speed in KPH
-	kGearRatioInToOut        = 3.0                                                                   // Gear ratio of motor to wheel
-	kLimitSpeedMaxRpm = kLimitSpeedMaxKph * 1000000 / kWheelCircumferenceMm / 60 * kGearRatioInToOut // Max speed in RPM
-	kDefaultCurrent   = kLimitCurrentMax                                                      // Used for straight and spin commands
+	kLimitCurrentMax  = 5                                                        // Maximum motor current
+	kLimitSpeedMaxKph = 10                                                        // Max speed in KPH
+	kGearRatio        = 3.0                                                      // Gear ratio of motor to wheel
+	kLimitSpeedMaxRpm = kLimitSpeedMaxKph * 1000000 / kWheelCircumferenceMm / 60 * kGearRatioInToOut	// Max speed in RPM
+	kDefaultCurrent   = kLimitCurrentMax                                         // Used for straight and spin commands
+	kMinTurnRadius    = 1.0                                                      // Minimum turn radius in meters
 
 	kNumBitsPerByte = 8
 
@@ -203,6 +204,50 @@ func mainWithArgs(ctx context.Context, args []string, logger logging.Logger) (er
 	}
 	<-ctx.Done()
 	return nil
+}
+
+// degreesToRadians converts angular velocity from degrees to radians.
+func degreesToRadians(degree float64) float64 {
+	return degree * (math.Pi / 180)
+}
+
+// radiansToDegrees converts angular velocity from radians to degrees.
+func radiansToDegrees(radian float64) float64 {
+	return radian * (180 / math.Pi)
+}
+
+// EnforceMinTurnRadius adjusts the linear and angular velocities to maintain a minimum turn radius.
+// Parameters:
+// v - original linear velocity in m/s
+// omega - original angular velocity in degrees/s
+// minRadius - minimum allowable turn radius in meters
+// Returns:
+// adjustedV - adjusted linear velocity in m/s
+// adjustedOmega - adjusted angular velocity in degrees/s
+func EnforceMinTurnRadius(v, omega, minRadius float64) (adjustedV, adjustedOmega float64) {
+	// Convert omega to radians per second for calculation
+	omegaRad := degreesToRadians(omega)
+
+	// If the robot is moving straight or the original angular velocity is very small, return the original velocities.
+	if math.Abs(omegaRad) < 1e-6 || v == 0 {
+		return v, omega
+	}
+
+	// Calculate the turn radius with original velocities
+	currentRadius := v / omegaRad
+
+	// Check if the current turn radius is smaller than the minimum radius
+	if math.Abs(currentRadius) < minRadius {
+		// Adjust angular velocity to enforce the minimum turn radius
+		adjustedOmegaRad := v / minRadius
+		adjustedV = v
+		adjustedOmega = radiansToDegrees(adjustedOmegaRad)
+	} else {
+		// No adjustment needed, convert omega back to degrees/s
+		return v, omega
+	}
+
+	return adjustedV, adjustedOmega
 }
 
 // calculateAccelAndBrakeBytes returns the intermode specific acceleration and brake bytes for the given
@@ -481,8 +526,15 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 		base.logger.Warnw("Angular Y command non-zero and has no effect")
 	}
 
-	// Temporary inversion to get the Modal moving in reverse
-	linearComponent := -1*linear.Y
+	linearLimited, angularLimited := EnforceMinTurnRadius(-1*linear.Y, angular.Z, kMinTurnRadius)
+
+	var linearMagnitude = linearLimited
+	// Angular multiplied by 0.5 because that is the max single-linear-direction magnitude
+	var rpmDesFr = linearMagnitude + angularLimited
+	var rpmDesFl = linearMagnitude - angularLimited
+	var rpmDesRr = linearMagnitude + angularLimited
+	var rpmDesRl = linearMagnitude - angularLimited
+	var rpmMax = math.Max(math.Max(rpmDesFr, rpmDesFl), math.Max(rpmDesRr, rpmDesRl))
 
 	// TODO: Add support for four wheel differential
 	powerDesLeft, powerDesRight := base.differentialDrive(linearComponent, angular.Z)
