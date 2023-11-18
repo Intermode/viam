@@ -147,7 +147,7 @@ const (
 	// Limits and defaults
 	kLimitCurrentMax  = 5                                                        // Maximum motor current
 	kLimitSpeedMaxKph = 10                                                        // Max speed in KPH
-	kGearRatio        = 3.0                                                      // Gear ratio of motor to wheel
+	kGearRatioInToOut = 3.0                                                      // Gear ratio of motor to wheel
 	kLimitSpeedMaxRpm = kLimitSpeedMaxKph * 1000000 / kWheelCircumferenceMm / 60 * kGearRatioInToOut	// Max speed in RPM
 	kDefaultCurrent   = kLimitCurrentMax                                         // Used for straight and spin commands
 	kMinTurnRadius    = 1.0                                                      // Minimum turn radius in meters
@@ -528,16 +528,8 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 
 	linearLimited, angularLimited := EnforceMinTurnRadius(-1*linear.Y, angular.Z, kMinTurnRadius)
 
-	var linearMagnitude = linearLimited
-	// Angular multiplied by 0.5 because that is the max single-linear-direction magnitude
-	var rpmDesFr = linearMagnitude + angularLimited
-	var rpmDesFl = linearMagnitude - angularLimited
-	var rpmDesRr = linearMagnitude + angularLimited
-	var rpmDesRl = linearMagnitude - angularLimited
-	var rpmMax = math.Max(math.Max(rpmDesFr, rpmDesFl), math.Max(rpmDesRr, rpmDesRl))
-
 	// TODO: Add support for four wheel differential
-	powerDesLeft, powerDesRight := base.differentialDrive(linearComponent, angular.Z)
+	powerDesLeft, powerDesRight := base.differentialDrive(linearLimited, angularLimited)
 
 	// Convert power percentage to KPH
 	//	Temporary until the base can handle power directly
