@@ -145,12 +145,12 @@ const (
 	kMagnitudeMaxY float64 = 1
 
 	// Limits and defaults
-	kLimitCurrentMax  = 5                                                        // Maximum motor current
-	kLimitSpeedMaxKph = 10                                                        // Max speed in KPH
-	kGearRatioInToOut = 3.0                                                      // Gear ratio of motor to wheel
-	kLimitSpeedMaxRpm = kLimitSpeedMaxKph * 1000000 / kWheelCircumferenceMm / 60 * kGearRatioInToOut	// Max speed in RPM
-	kDefaultCurrent   = kLimitCurrentMax                                         // Used for straight and spin commands
-	kMinTurnRadius    = 1.0                                                      // Minimum turn radius in meters
+	kLimitCurrentMax  = 5                                                                            // Maximum motor current
+	kLimitSpeedMaxKph = 10                                                                           // Max speed in KPH
+	kGearRatioInToOut = 3.0                                                                          // Gear ratio of motor to wheel
+	kLimitSpeedMaxRpm = kLimitSpeedMaxKph * 1000000 / kWheelCircumferenceMm / 60 * kGearRatioInToOut // Max speed in RPM
+	kDefaultCurrent   = kLimitCurrentMax                                                             // Used for straight and spin commands
+	kMinTurnRadius    = 1.0                                                                          // Minimum turn radius in meters
 
 	kNumBitsPerByte = 8
 
@@ -174,7 +174,7 @@ const (
 	driveModeFrontWheelDrive = "front-wheel-drive"
 	driveModeRearWheelDrive  = "rear-wheel-drive"
 	driveModeIndAped         = "independent-aped-drive"
-	driveModeIndKph			 = "independent-kph-drive"
+	driveModeIndKph          = "independent-kph-drive"
 )
 
 var (
@@ -528,6 +528,10 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 
 	linearLimited, angularLimited := EnforceMinTurnRadius(-1*linear.Y, angular.Z, kMinTurnRadius)
 
+	base.logger.Debugw("Limited commands",
+		"linearLimited", linearLimited,
+		"angularLimited", angularLimited)
+
 	// TODO: Add support for four wheel differential
 	powerDesLeft, powerDesRight := base.differentialDrive(linearLimited, angularLimited)
 
@@ -617,7 +621,7 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 	}
 
 	// Temporary inversion to get the Modal moving in reverse
-	linearComponent := -1*linear.Y
+	linearComponent := -1 * linear.Y
 
 	// TODO: Add support for four wheel differential
 	rpmDesLeft, rpmDesRight := base.velocityMath(linearComponent, angular.Z)
@@ -746,10 +750,10 @@ func (base *intermodeBase) rpmToKph(rpmL, rpmR float64) (float64, float64) {
 	var kphR float64 = rpmR / base.gearRatioInToOut * base.wheelCircumferenceMm / 1000000.0 * 60.0
 
 	base.logger.Debugw("RPM to KPH conversion",
-	"rpmL", rpmL,
-	"rpmR", rpmR,
-	"kphL", kphL,
-	"kphR", kphR)
+		"rpmL", rpmL,
+		"rpmR", rpmR,
+		"kphL", kphL,
+		"kphR", kphR)
 
 	return kphL, kphR
 }
@@ -868,7 +872,7 @@ func newBase(conf resource.Config, logger logging.Logger) (base.Base, error) {
 		Named:                conf.ResourceName().AsNamed(),
 		trackWidthMm:         kVehicleTrackwidthMm,
 		wheelCircumferenceMm: kWheelCircumferenceMm,
-		gearRatioInToOut:            kGearRatioInToOut,
+		gearRatioInToOut:     kGearRatioInToOut,
 	}
 	iBase.isMoving.Store(false)
 
