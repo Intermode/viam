@@ -620,11 +620,8 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 		base.logger.Warnw("Angular Y command non-zero and has no effect")
 	}
 
-	// Temporary inversion to get the Modal moving in reverse
-	linearComponent := -1 * linear.Y
-
 	// TODO: Add support for four wheel differential
-	rpmDesLeft, rpmDesRight := base.velocityMath(linearComponent, angular.Z)
+	rpmDesLeft, rpmDesRight := base.velocityMath(linear.Y, angular.Z)
 
 	// Limit wheel RPM to +/-kLimitSpeedMaxRpm
 	rpmDesLeft = math.Min(math.Max(rpmDesLeft, -kLimitSpeedMaxRpm), kLimitSpeedMaxRpm)
