@@ -526,7 +526,7 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 		base.logger.Warnw("Angular Y command non-zero and has no effect")
 	}
 
-	linearLimited, angularLimited := EnforceMinTurnRadius(-1*linear.Y, angular.Z, kMinTurnRadius)
+	linearLimited, angularLimited := EnforceMinTurnRadius(linear.Y, angular.Z, kMinTurnRadius)
 
 	base.logger.Debugw("Limited commands",
 		"linearLimited", linearLimited,
