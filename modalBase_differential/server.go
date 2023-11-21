@@ -366,10 +366,21 @@ func publishThread(
 	logger logging.Logger,
 ) {
 	defer socket.Close()
-	commsTimeout = time.Now().Add(commsTimeoutIntervalMs * time.Millisecond)
+	emergencyTicker := time.NewTicker(commsTimeoutIntervalMs * time.Millisecond)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop() // Clean up the ticker when you're done with it
+	defer emergencyTicker.Stop() // Clean up the emergency ticker as well
 
 	driveFrame := (&stopCmd).toFrame(logger)
 	var frame canbus.Frame
+
+	var axleFrame = (&axleCommand{
+		rightSpeed:    0.0,
+		leftSpeed:     0.0,
+		Brake:         0.0,
+		SteeringAngle: 0.0,
+	}).toFrame(logger)
+	var frontAxleFrame, rearAxleFrame = axleFrame, axleFrame
 
 	for {
 		if ctx.Err() != nil {
@@ -381,20 +392,32 @@ func publishThread(
 			if frame.ID == kulCanIdCmdDrive {
 				// new drive command will replace the existing drive command and be sent every 10ms.
 				driveFrame = frame
-				commsTimeout = time.Now().Add(commsTimeoutIntervalMs * time.Millisecond)
+				emergencyTicker.Reset(commsTimeoutIntervalMs * time.Millisecond) // Reset emergency ticker
+			} else if frame.ID == kulCanIdCmdAxleF {
+				frontAxleFrame = frame
+			} else if frame.ID == kulCanIdCmdAxleR {
+				rearAxleFrame = frame
 			} else {
 				// non-drive commands should be sent immediately, but retain current drive command for base heartbeating.
 				if _, err := socket.Send(frame); err != nil {
 					logger.Errorw("non-drive command send error", "error", err)
 				}
 			}
-		case <-time.After(10 * time.Millisecond):
-		}
-		if commsTimeoutEnable && time.Now().After(commsTimeout) {
+		case <-ticker.C: // This case is triggered every 10 milliseconds
+			if _, err := socket.Send(driveFrame); err != nil {
+				logger.Errorw("Drive command send error", "error", err)
+			}
+			if _, err := socket.Send(frontAxleFrame); err != nil {
+				logger.Errorw("Front axle command send error", "error", err)
+			}
+			if _, err := socket.Send(rearAxleFrame); err != nil {
+				logger.Errorw("Rear axle command send error", "error", err)
+			}
+		case <-emergencyTicker.C: // Check for emergency condition
 			driveFrame = (&emergencyCmd).toFrame(logger)
-		}
-		if _, err := socket.Send(driveFrame); err != nil {
-			logger.Errorw("Drive command send error", "error", err)
+			if _, err := socket.Send(driveFrame); err != nil {
+				logger.Errorw("Emergency command send error", "error", err)
+			}
 		}
 	}
 }
