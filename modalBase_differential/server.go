@@ -414,9 +414,11 @@ func publishThread(
 				logger.Errorw("Rear axle command send error", "error", err)
 			}
 		case <-emergencyTicker.C: // Check for emergency condition
-			driveFrame = (&emergencyCmd).toFrame(logger)
-			if _, err := socket.Send(driveFrame); err != nil {
-				logger.Errorw("Emergency command send error", "error", err)
+			if true == commsTimeoutEnable {
+				driveFrame = (&emergencyCmd).toFrame(logger)
+				if _, err := socket.Send(driveFrame); err != nil {
+					logger.Errorw("Emergency command send error", "error", err)
+				}
 			}
 		}
 	}
