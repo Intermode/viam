@@ -244,10 +244,10 @@ func EnforceMinTurnRadius(linear, angular, minRadius, topSpeed float64) (adjuste
 	if math.Abs(currentRadius) < minRadius {
 		// Adjust linear velocity
 		adjustedV := omegaRad * minRadius
-		adjustedLinear = math.Min(adjustedV/topSpeed, 1)
+		adjustedLinear = math.Max(math.Min(adjustedV/topSpeed, 1), -1)
 
 		// Adjust angular velocity if linear velocity is capped at 1 (100%)
-		if adjustedLinear == 1 {
+		if math.Abs(adjustedLinear) == 1 {
 			// Use the capped linear velocity to calculate adjusted angular velocity
 			cappedV := topSpeed
 			adjustedOmegaRad := cappedV / minRadius
@@ -255,6 +255,9 @@ func EnforceMinTurnRadius(linear, angular, minRadius, topSpeed float64) (adjuste
 		} else {
 			adjustedAngular = angular
 		}
+
+		adjustedLinear = math.Copysign(adjustedLinear, linear)
+		adjustedAngular	= math.Copysign(adjustedAngular, angular)
 	} else {
 		// No adjustment needed
 		return linear, angular
