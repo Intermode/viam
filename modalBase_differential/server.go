@@ -566,7 +566,7 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 
 	linearLimited, angularLimited := EnforceMinTurnRadius(linear.Y, angular.Z, kMinTurnRadius, kLimitSpeedMaxMps)
 
-	base.logger.Debugw("Limited commands",
+	base.logger.Debugw("Turn radius limited commands",
 		"linearLimited", linearLimited,
 		"angularLimited", angularLimited)
 
@@ -575,10 +575,8 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 
 	// Convert power percentage to KPH
 	//	Temporary until the base can handle power directly
-	rpmDesLeft := powerDesLeft * kLimitSpeedMaxRpm
-	rpmDesRight := powerDesRight * kLimitSpeedMaxRpm
-
-	kphDesLeft, kphDesRight := base.rpmToKph(rpmDesLeft, rpmDesRight)
+	kphDesLeft := powerDesLeft * kLimitSpeedMaxKph
+	kphDesRight := powerDesRight * kLimitSpeedMaxKph
 
 	var driveCmd = driveCommand{
 		Accelerator:   0,
