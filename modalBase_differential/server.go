@@ -149,6 +149,7 @@ const (
 	kLimitSpeedMaxKph = 10                                                                           // Max speed in KPH
 	kGearRatioInToOut = 3.0                                                                          // Gear ratio of motor to wheel
 	kLimitSpeedMaxRpm = kLimitSpeedMaxKph * 1000000 / kWheelCircumferenceMm / 60 * kGearRatioInToOut // Max speed in RPM
+	kLimitSpeedMaxMps = kLimitSpeedMaxKph / 3.6                                                      // Max speed in m/s
 	kDefaultCurrent   = kLimitCurrentMax                                                             // Used for straight and spin commands
 	kMinTurnRadius    = 1.0                                                                          // Minimum turn radius in meters
 
@@ -216,38 +217,50 @@ func radiansToDegrees(radian float64) float64 {
 	return radian * (180 / math.Pi)
 }
 
-// EnforceMinTurnRadius adjusts the linear and angular velocities to maintain a minimum turn radius.
+// EnforceMinTurnRadius adjusts the velocities to maintain a minimum turn radius.
+// It limits linear velocity to 1 (100%) and adjusts angular velocity to compensate if necessary.
+//
 // Parameters:
-// v - original linear velocity in m/s
-// omega - original angular velocity in degrees/s
-// minRadius - minimum allowable turn radius in meters
+// linear - original linear velocity as a fraction of top speed
+// angular - angular velocity as a fraction of top speed (scaled relatively)
+// minRadius - minimum allowable turn radius
+// topSpeed - the top speed of the robot (m/s)
+//
 // Returns:
-// adjustedV - adjusted linear velocity in m/s
-// adjustedOmega - adjusted angular velocity in degrees/s
-func EnforceMinTurnRadius(v, omega, minRadius float64) (adjustedV, adjustedOmega float64) {
-	// Convert omega to radians per second for calculation
-	omegaRad := degreesToRadians(omega)
+// adjustedLinear - adjusted linear velocity as a fraction of top speed
+// adjustedAngular - adjusted angular velocity as a fraction of top speed
+func EnforceMinTurnRadius(linear, angular, minRadius, topSpeed float64) (adjustedLinear, adjustedAngular float64) {
+	// Convert to actual velocities
+	v := linear * topSpeed
+	omega := angular * topSpeed // Assuming angular velocity is scaled to linear velocity
 
-	// If the robot is moving straight or the original angular velocity is very small, return the original velocities.
-	if math.Abs(omegaRad) < 1e-6 || v == 0 {
-		return v, omega
-	}
+	// Convert omega to radians/s (assuming 1m radius for 1m/s linear speed as base for conversion)
+	omegaRad := omega / kMinTurnRadius
 
 	// Calculate the turn radius with original velocities
 	currentRadius := v / omegaRad
 
-	// Check if the current turn radius is smaller than the minimum radius
+	// Adjust linear or angular velocity based on the minimum turn radius
 	if math.Abs(currentRadius) < minRadius {
-		// Adjust angular velocity to enforce the minimum turn radius
-		adjustedOmegaRad := v / minRadius
-		adjustedV = v
-		adjustedOmega = radiansToDegrees(adjustedOmegaRad)
+		// Adjust linear velocity
+		adjustedV := omegaRad * minRadius
+		adjustedLinear = math.Min(adjustedV/topSpeed, 1)
+
+		// Adjust angular velocity if linear velocity is capped at 1 (100%)
+		if adjustedLinear == 1 {
+			// Use the capped linear velocity to calculate adjusted angular velocity
+			cappedV := topSpeed
+			adjustedOmegaRad := cappedV / minRadius
+			adjustedAngular = adjustedOmegaRad * kMinTurnRadius / topSpeed
+		} else {
+			adjustedAngular = angular
+		}
 	} else {
-		// No adjustment needed, convert omega back to degrees/s
-		return v, omega
+		// No adjustment needed
+		return linear, angular
 	}
 
-	return adjustedV, adjustedOmega
+	return adjustedLinear, adjustedAngular
 }
 
 // calculateAccelAndBrakeBytes returns the intermode specific acceleration and brake bytes for the given
@@ -551,7 +564,7 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 		base.logger.Warnw("Angular Y command non-zero and has no effect")
 	}
 
-	linearLimited, angularLimited := EnforceMinTurnRadius(linear.Y, angular.Z, kMinTurnRadius)
+	linearLimited, angularLimited := EnforceMinTurnRadius(linear.Y, angular.Z, kMinTurnRadius, kLimitSpeedMaxMps)
 
 	base.logger.Debugw("Limited commands",
 		"linearLimited", linearLimited,
