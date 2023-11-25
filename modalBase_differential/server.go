@@ -324,7 +324,7 @@ func (cmd *driveCommand) toFrame(logger logging.Logger) canbus.Frame {
 	frame.Data = append(frame.Data, steeringAngleBytes...) // Steering hard-coded to 0 as turning is handled by the wheels
 	frame.Data = append(frame.Data, cmd.Gear|(cmd.DriveMode<<4), cmd.SteerMode)
 
-	logger.Debugw("frame", "data", frame.Data)
+	// logger.Debugw("frame", "data", frame.Data)
 
 	return frame
 }
@@ -350,7 +350,7 @@ func (cmd *axleCommand) toFrame(logger logging.Logger) canbus.Frame {
 	binary.LittleEndian.PutUint16(frame.Data[4:6], brakeBytes)
 	binary.LittleEndian.PutUint16(frame.Data[6:8], steeringAngleBytes)
 
-	logger.Debugw("frame", "data", frame.Data)
+	// logger.Debugw("frame", "data", frame.Data)
 
 	return frame
 }
@@ -808,7 +808,6 @@ func (base *intermodeBase) Stop(ctx context.Context, extra map[string]interface{
 	base.isMoving.Store(false)
 	base.logger.Infow("Stopping")
 	ret := base.setNextCommand(ctx, &stopCmd)
-	base.logger.Infow("Stopped")
 	return ret
 }
 
