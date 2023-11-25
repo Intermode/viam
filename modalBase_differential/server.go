@@ -217,7 +217,7 @@ func radiansToDegrees(radian float64) float64 {
 	return radian * (180 / math.Pi)
 }
 
-// EnforceMinTurnRadius adjusts the velocities to maintain a minimum turn radius.
+// enforceMinTurnRadius adjusts the velocities to maintain a minimum turn radius.
 // It limits linear velocity to 1 (100%) and adjusts angular velocity to compensate if necessary.
 //
 // Parameters:
@@ -229,11 +229,14 @@ func radiansToDegrees(radian float64) float64 {
 // Returns:
 // adjustedLinear - adjusted linear velocity as a fraction of top speed
 // adjustedAngular - adjusted angular velocity as a fraction of top speed
-func EnforceMinTurnRadius(linear, angular, minRadius, topSpeed float64) (adjustedLinear, adjustedAngular float64) {
+func (base *intermodeBase) enforceMinTurnRadius(linear, angular, minRadius, topSpeed float64) (adjustedLinear, adjustedAngular float64) {
 	// Angular is essentially zero, so no changes are needed
 	if 0.000001 > math.Abs(angular) {
 		return linear, angular
 	}
+	
+	// Initialize the return values
+	adjustedLinear, adjustedAngular = linear, angular
 	
     // Limit power to the greater of the two inputs
     maxCommand := math.Max(math.Abs(linear), math.Abs(angular))
@@ -253,8 +256,8 @@ func EnforceMinTurnRadius(linear, angular, minRadius, topSpeed float64) (adjuste
 	if math.Abs(currentRadius) < minRadius {
 		// Adjust linear velocity
 		adjustedV := omegaRad * minRadius
-		adjustedLinear := math.Max(math.Min(adjustedV / topSpeed, maxCommand), -1*maxCommand)
-
+		adjustedLinear = math.Max(math.Min(adjustedV / topSpeed, maxCommand), -1*maxCommand)
+		
 		// Adjust angular velocity if linear velocity is capped at 1 (100%)
 		if math.Abs(adjustedLinear) >= maxCommand {
 			// Use the capped linear velocity to calculate adjusted angular velocity
@@ -267,9 +270,6 @@ func EnforceMinTurnRadius(linear, angular, minRadius, topSpeed float64) (adjuste
 
 		adjustedLinear = math.Copysign(adjustedLinear, linear)
 		adjustedAngular	= math.Copysign(adjustedAngular, angular)
-	} else {
-		// No adjustment needed
-		return linear, angular
 	}
 
 	return adjustedLinear, adjustedAngular
@@ -576,7 +576,7 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 		base.logger.Warnw("Angular Y command non-zero and has no effect")
 	}
 
-	linearLimited, angularLimited := EnforceMinTurnRadius(linear.Y, angular.Z, kMinTurnRadius, kLimitSpeedMaxMps)
+	linearLimited, angularLimited := base.enforceMinTurnRadius(linear.Y, angular.Z, kMinTurnRadius, kLimitSpeedMaxMps)
 
 	base.logger.Debugw("Turn radius limited commands",
 		"linearLimited", linearLimited,
