@@ -151,7 +151,7 @@ const (
 	kLimitSpeedMaxRpm = kLimitSpeedMaxKph * 1000000 / kWheelCircumferenceMm / 60 * kGearRatioInToOut // Max speed in RPM
 	kLimitSpeedMaxMps = kLimitSpeedMaxKph / 3.6                                                      // Max speed in m/s
 	kDefaultCurrent   = kLimitCurrentMax                                                             // Used for straight and spin commands
-	kMinTurnRadius    = 2.0                                                                          // Minimum turn radius in meters
+	kMinTurnRadius    = 3.0                                                                          // Minimum turn radius in meters
 
 	kNumBitsPerByte = 8
 
@@ -235,6 +235,10 @@ func EnforceMinTurnRadius(linear, angular, minRadius, topSpeed float64) (adjuste
 		return linear, angular
 	}
 	
+    // Limit power to the greater of the two inputs
+    maxCommand := math.Max(math.Abs(linear), math.Abs(angular))
+    effectiveTopSpeed := topSpeed * maxCommand
+
 	// Convert to actual velocities
 	v := linear * topSpeed
 	omega := angular * topSpeed // Assuming angular velocity is scaled to linear velocity
@@ -249,12 +253,12 @@ func EnforceMinTurnRadius(linear, angular, minRadius, topSpeed float64) (adjuste
 	if math.Abs(currentRadius) < minRadius {
 		// Adjust linear velocity
 		adjustedV := omegaRad * minRadius
-		adjustedLinear = math.Max(math.Min(adjustedV/topSpeed, 1), -1)
+		adjustedLinear := math.Max(math.Min(adjustedV / effectiveTopSpeed, maxCommand), -1*maxCommand)
 
 		// Adjust angular velocity if linear velocity is capped at 1 (100%)
-		if math.Abs(adjustedLinear) == 1 {
+		if math.Abs(adjustedLinear) >= maxCommand {
 			// Use the capped linear velocity to calculate adjusted angular velocity
-			cappedV := topSpeed
+			cappedV := effectiveTopSpeed
 			adjustedOmegaRad := cappedV / minRadius
 			adjustedAngular = adjustedOmegaRad * 1.0 / topSpeed
 		} else {
