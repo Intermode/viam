@@ -148,10 +148,11 @@ const (
 	kLimitCurrentMax  = 5                                                                            // Maximum motor current
 	kLimitSpeedMaxKph = 10                                                                           // Max speed in KPH
 	kGearRatioInToOut = 3.0                                                                          // Gear ratio of motor to wheel
-	kLimitSpeedMaxRpm = kLimitSpeedMaxKph * 1000000 / kWheelCircumferenceMm / 60 * kGearRatioInToOut // Max speed in RPM
+	kLimitSpeedMaxWheelRpm = kLimitSpeedMaxKph * 1000000 / kWheelCircumferenceMm / 60
+	kLimitSpeedMaxMotorRpm = kLimitSpeedMaxWheelRpm * kGearRatioInToOut // Max motor speed in RPM
 	kLimitSpeedMaxMps = kLimitSpeedMaxKph / 3.6                                                      // Max speed in m/s
 	kDefaultCurrent   = kLimitCurrentMax                                                             // Used for straight and spin commands
-	kMinTurnRadius    = 3.0                                                                          // Minimum turn radius in meters
+	kMinTurnRadius    = 2.0                                                                          // Minimum turn radius in meters
 
 	kNumBitsPerByte = 8
 
@@ -217,19 +218,25 @@ func radiansToDegrees(radian float64) float64 {
 	return radian * (180 / math.Pi)
 }
 
-// enforceMinTurnRadius adjusts the velocities to maintain a minimum turn radius.
-// It limits linear velocity to 1 (100%) and adjusts angular velocity to compensate if necessary.
-//
+// enforceMinTurnRadius adjusts the velocities to maintain a minimum turn radius for a differential drive vehicle.
 // Parameters:
-// linear - original linear velocity as a fraction of top speed
-// angular - angular velocity as a fraction of top speed (scaled relatively)
+// linear - fraction of maximum linear velocity
+// angular - fraction of maximum angular velocity
 // minRadius - minimum allowable turn radius
-// topSpeed - the top speed of the robot (m/s)
-//
+// maxWheelRPM - maximum wheel RPM
+// wheelDiameter - diameter of the wheel in mm
+// wheelbase - distance between the wheels in mm
 // Returns:
-// adjustedLinear - adjusted linear velocity as a fraction of top speed
-// adjustedAngular - adjusted angular velocity as a fraction of top speed
-func (base *intermodeBase) enforceMinTurnRadius(linear, angular, minRadius, topSpeed float64) (adjustedLinear, adjustedAngular float64) {
+// adjustedLinear - adjusted linear velocity as a fraction of maximum linear velocity
+// adjustedAngular - adjusted angular velocity as a fraction of maximum angular velocity
+func (base *intermodeBase) enforceMinTurnRadius(linear, angular, minRadius, maxWheelRPM, wheelDiameter, wheelbase float64) (adjustedLinear, adjustedAngular float64) {
+	// Convert max RPM to max linear speed (m/s)
+	wheelCircumference := math.Pi * wheelDiameter / 1000 // Circumference in meters
+	maxLinearSpeed := maxWheelRPM * wheelCircumference / 60 // Convert RPM to m/s
+
+	// Calculate max angular velocity (rad/s)
+	maxAngularVelocity := (2 * maxLinearSpeed) / wheelbase * 1000
+
 	// Angular is essentially zero, so no changes are needed
 	if 0.000001 > math.Abs(angular) {
 		return linear, angular
@@ -240,36 +247,30 @@ func (base *intermodeBase) enforceMinTurnRadius(linear, angular, minRadius, topS
 	
     // Limit power to the greater of the two inputs
     maxCommand := math.Max(math.Abs(linear), math.Abs(angular))
-    effectiveTopSpeed := topSpeed * maxCommand
 
 	// Convert to actual velocities
-	v := linear * topSpeed
-	omega := angular * topSpeed // Assuming angular velocity is scaled to linear velocity
-
-	// Convert omega to radians/s (assuming 1m radius for 1m/s linear speed as base for conversion)
-	omegaRad := omega / 1.0
+	v := linear * maxLinearSpeed
+	omega := angular * maxAngularVelocity
 
 	// Calculate the turn radius with original velocities
-	currentRadius := v / omegaRad
+	currentRadius := v / omega
 
 	// Adjust linear or angular velocity based on the minimum turn radius
 	if math.Abs(currentRadius) < minRadius {
 		// Adjust linear velocity
-		adjustedV := omegaRad * minRadius
-		adjustedLinear = math.Max(math.Min(adjustedV / topSpeed, maxCommand), -1*maxCommand)
-		
-		// Adjust angular velocity if linear velocity is capped at 1 (100%)
+		adjustedV := omega * minRadius
+		adjustedLinear = math.Max(math.Min(adjustedV / maxLinearSpeed, maxCommand), -1*maxCommand)
+
+		// Adjust angular velocity if linear velocity is capped at maxCommand
 		if math.Abs(adjustedLinear) >= maxCommand {
 			// Use the capped linear velocity to calculate adjusted angular velocity
-			cappedV := effectiveTopSpeed
-			adjustedOmegaRad := cappedV / minRadius
-			adjustedAngular = adjustedOmegaRad * 1.0 / topSpeed
-		} else {
-			adjustedAngular = angular
+			cappedV := maxLinearSpeed * maxCommand
+			adjustedOmega := cappedV / minRadius
+			adjustedAngular = adjustedOmega / maxAngularVelocity
 		}
 
 		adjustedLinear = math.Copysign(adjustedLinear, linear)
-		adjustedAngular	= math.Copysign(adjustedAngular, angular)
+		adjustedAngular = math.Copysign(adjustedAngular, angular)
 	}
 
 	return adjustedLinear, adjustedAngular
@@ -462,7 +463,7 @@ func (base *intermodeBase) MoveStraight(ctx context.Context, distanceMm int, mmP
 	// var speedNegative = mmPerSec < 0
 	// var rpsDes = mmPerSec / kWheelCircumferenceMm
 	// var rpmDesMagnitude = math.Abs(rpsDes * 60)
-	// rpmDesMagnitude = math.Min(float64(rpmDesMagnitude), kLimitSpeedMaxRpm)
+	// rpmDesMagnitude = math.Min(float64(rpmDesMagnitude), kLimitSpeedMaxMotorRpm)
 
 	// // Distance
 	// var distanceNegative = distanceMm < 0
@@ -509,7 +510,7 @@ func (base *intermodeBase) Spin(ctx context.Context, angleDeg, degsPerSec float6
 	// // Speed
 	// var speedNegative = degsPerSec < 0
 	// var rpmDesMagnitude = math.Abs(degsPerSec / 360 * 60 * kWheelRevPerVehicleRev)
-	// rpmDesMagnitude = math.Min(rpmDesMagnitude, kLimitSpeedMaxRpm)
+	// rpmDesMagnitude = math.Min(rpmDesMagnitude, kLimitSpeedMaxMotorRpm)
 
 	// // Angle
 	// var angleNegative = angleDeg < 0
@@ -576,7 +577,7 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 		base.logger.Warnw("Angular Y command non-zero and has no effect")
 	}
 
-	linearLimited, angularLimited := base.enforceMinTurnRadius(linear.Y, angular.Z, kMinTurnRadius, kLimitSpeedMaxMps)
+	linearLimited, angularLimited := base.enforceMinTurnRadius(linear.Y, angular.Z, kMinTurnRadius, kLimitSpeedMaxWheelRpm, kWheelRadiusMm*2, kVehicleWheelbaseMm)
 
 	base.logger.Debugw("Turn radius limited commands",
 		"linearLimited", linearLimited,
@@ -671,9 +672,9 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 	// TODO: Add support for four wheel differential
 	rpmDesLeft, rpmDesRight := base.velocityMath(linear.Y, angular.Z)
 
-	// Limit wheel RPM to +/-kLimitSpeedMaxRpm
-	rpmDesLeft = math.Min(math.Max(rpmDesLeft, -kLimitSpeedMaxRpm), kLimitSpeedMaxRpm)
-	rpmDesRight = math.Min(math.Max(rpmDesRight, -kLimitSpeedMaxRpm), kLimitSpeedMaxRpm)
+	// Limit wheel RPM to +/-kLimitSpeedMaxMotorRpm
+	rpmDesLeft = math.Min(math.Max(rpmDesLeft, -kLimitSpeedMaxMotorRpm), kLimitSpeedMaxMotorRpm)
+	rpmDesRight = math.Min(math.Max(rpmDesRight, -kLimitSpeedMaxMotorRpm), kLimitSpeedMaxMotorRpm)
 
 	// Convert RPM to KPH
 	//	Temporary until the base can handle RPM directly
