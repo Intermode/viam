@@ -190,6 +190,9 @@ const (
 	telemWheelSpeedId   uint32 = 0x241
 	telemBatteryPowerId uint32 = 0x250
 	telemBatteryStateId uint32 = 0x251
+	
+	kVehicleWheelbaseMm  = 680
+	kVehicleTrackwidthMm = 515
 )
 
 const (
@@ -639,6 +642,41 @@ func (base *interModeBase) MoveStraight(ctx context.Context, distanceMm int, mmP
 	return nil
 }
 
+func (base *interModeBase) calculateSteerAngle(ctx context.Context, linearVelocity, angularVelocity float64) (float64, error) {
+	steerangle := math.Atan2(linearVelocity, angularVelocity * kVehicleWheelbaseMm)
+	// Limit steerangle to valid range
+	steerangle = math.Max(-STEERANGLE_MAX, math.Min(STEERANGLE_MAX, steerangle))
+	return steerangle, nil
+}
+
+func (base *interModeBase) calculateGearDesired(ctx context.Context, accel float64) (byte, error) {
+	// TODO: Only allow changes when at low speed
+
+	// If the desired gear got corrupted, default to emergency stop.
+	gearDesired, ok := telemGet(telemGearDesired).(byte)
+	if !ok {
+		gearDesired = gears[gearEmergencyStop]
+	} else {
+		// A negative acceleration means to move the opposite direction of
+		// 	the current gear
+		if 0 > accel {
+			if gears[gearReverse] == gearDesired {
+				gearDesired = gears[gearDrive]
+			} else {	// Default to reverse in case gearDesired is unset
+				gearDesired = gears[gearReverse]
+			}
+		} else {
+			if gears[gearDrive] == gearDesired {
+				gearDesired = gears[gearReverse]
+			} else {	// Default to drive in case gearDesired is unset
+				gearDesired = gears[gearDrive]
+			}
+		}
+	}
+
+	return gearDesired, nil
+}
+
 // Spin spins the base by the given angleDeg and degsPerSec.
 func (base *interModeBase) Spin(ctx context.Context, angleDeg, degsPerSec float64, extra map[string]interface{}) error {
 	//TODO: make headlights and hazard persistent parts of the base
@@ -679,8 +717,35 @@ func (base *interModeBase) Spin(ctx context.Context, angleDeg, degsPerSec float6
 	})
 }
 
+
+
 // SetPower sets the linear and angular [-1, 1] drive power.
 func (base *interModeBase) SetPower(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
+	// Print received command
+	//	Not a debug message to avoid activating all of the debug messages
+	base.logger.Infow("SetPower with ",
+		"linear.X", linear.X,
+		"linear.Y", linear.Y,
+		"linear.Z", linear.Z,
+		"angular.X", angular.X,
+		"angular.Y", angular.Y,
+		"angular.Z", angular.Z,
+	)
+
+	// Some vector components do not apply to a 2D base
+	if 0 != linear.X {
+		base.logger.Warnw("Linear X command non-zero and has no effect")
+	}
+	if 0 != linear.Z {
+		base.logger.Warnw("Linear Z command non-zero and has no effect")
+	}
+	if 0 != angular.X {
+		base.logger.Warnw("Angular X command non-zero and has no effect")
+	}
+	if 0 != angular.Y {
+		base.logger.Warnw("Angular Y command non-zero and has no effect")
+	}
+
 	//TODO: make headlights and hazard persistent parts of the base
 	if err := base.setNextCommand(ctx, &lightCommand{
 		RightTurnSignal: angular.Z < -0.3,
@@ -693,48 +758,28 @@ func (base *interModeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 
 	var accel float64 = 0
 	var brake float64 = 0
-	var ok = false
+	var steerAngle float64 = 0
 	var gearDesired byte = 0x0
-	{
-		accel = linear.Y
-		// TODO: Move brake to a Do command
-		// brake = linear.X
+	
+	// TODO: Make dependent on both linear and angular velocity
+	accel = linear.Y
+	// TODO: Move brake to a Do command
+	brake = linear.X
+	steerAngle, _ = base.calculateSteerAngle(ctx, linear.Y, angular.Z)
 
-		// TODO: Use constant instead
-		// TODO: Remove when there's an alternative to WASD demos
-		telemSet(telemSpeedLimit, 60.0)
+	// TODO: Use constant instead
+	// TODO: Remove when there's an alternative to WASD demos
+	telemSet(telemSpeedLimit, 60.0)
 
-		// TODO: Move to dedicated gear retrieval function and make more similar
-		// 	to a car (e.g., only allow changes when at low speed)
-		// If the desired gear got corrupted, default to emergency stop.
-		gearDesired, ok = telemGet(telemGearDesired).(byte)
-		if !ok {
-			gearDesired = gears[gearEmergencyStop]
-		} else {
-			// A negative acceleration means to move the opposite direction of
-			// 	the current gear
-			if 0 > accel {
-				if gears[gearReverse] == gearDesired {
-					gearDesired = gears[gearDrive]
-				} else {	// Default to reverse in case gearDesired is unset
-					gearDesired = gears[gearReverse]
-				}
-			} else {
-				if gears[gearDrive] == gearDesired {
-					gearDesired = gears[gearReverse]
-				} else {	// Default to drive in case gearDesired is unset
-					gearDesired = gears[gearDrive]
-				}
-			}
-		}
+	gearDesired, _ = base.calculateGearDesired(ctx, accel)
 
-		base.isMoving.Store(telemGet(telemSpeed) != 0)
-	}
+	base.isMoving.Store(telemGet(telemSpeed) != 0)
+
 	// TODO: Make steer angle actually calculated (const for WASD demo)
 	return base.setNextCommand(ctx, &driveCommand{
 		Accelerator:   accel,
 		Brake:         brake,
-		SteeringAngle: angular.Z / math.Abs(angular.Z) * 0.75 * STEERANGLE_MAX,
+		SteeringAngle: steerAngle,
 		Gear:          gearDesired,
 		SteerMode:     steerModes[steerModeFourWheelDrive],
 	})
