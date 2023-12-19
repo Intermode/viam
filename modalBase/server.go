@@ -674,7 +674,8 @@ func (base *intermodeBase) calculateSteerAngle(ctx context.Context, linearVeloci
 	if(0 == angularVelocity) {
 		return 0, nil
 	}
-	steerangle := math.Atan2(linearVelocity, angularVelocity * kVehicleWheelbaseMm)
+	linearVelocity = math.Abs(linearVelocity)	// Absolute value to avoid flip while in reverse
+	steerangle := math.Atan2(linearVelocity, angularVelocity * kVehicleWheelbaseMm) * -1
 	return steerangle, nil
 }
 
