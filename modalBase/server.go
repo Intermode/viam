@@ -642,10 +642,11 @@ func (base *interModeBase) MoveStraight(ctx context.Context, distanceMm int, mmP
 	return nil
 }
 
+// Converts linear and angular velocities to a steering angle
+//
+// Assumes that both velocities are in compatible units
 func (base *interModeBase) calculateSteerAngle(ctx context.Context, linearVelocity, angularVelocity float64) (float64, error) {
 	steerangle := math.Atan2(linearVelocity, angularVelocity * kVehicleWheelbaseMm)
-	// Limit steerangle to valid range
-	steerangle = math.Max(-STEERANGLE_MAX, math.Min(STEERANGLE_MAX, steerangle))
 	return steerangle, nil
 }
 
@@ -766,6 +767,9 @@ func (base *interModeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 	// TODO: Move brake to a Do command
 	brake = linear.X
 	steerAngle, _ = base.calculateSteerAngle(ctx, linear.Y, angular.Z)
+	// Convert to degrees and limit to the max steering angle
+	steerangle = STEERANGLE_MAX * steerangle
+	steerangle = math.Max(-STEERANGLE_MAX, math.Min(STEERANGLE_MAX, steerangle))
 
 	// TODO: Use constant instead
 	// TODO: Remove when there's an alternative to WASD demos
