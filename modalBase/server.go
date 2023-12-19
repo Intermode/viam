@@ -24,7 +24,6 @@ import (
 	_ "go.viam.com/rdk/components/generic"
 	"go.viam.com/rdk/config"
 	"go.viam.com/rdk/module"
-	"go.viam.com/rdk/registry"
 	"go.viam.com/rdk/resource"
 )
 
