@@ -193,6 +193,8 @@ const (
 	
 	kVehicleWheelbaseMm  = 680
 	kVehicleTrackwidthMm = 515
+
+	kTelemSpeedLimitDefault = 60.0
 )
 
 const (
@@ -771,9 +773,8 @@ func (base *interModeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 	steerangle = STEERANGLE_MAX * steerangle
 	steerangle = math.Max(-STEERANGLE_MAX, math.Min(STEERANGLE_MAX, steerangle))
 
-	// TODO: Use constant instead
 	// TODO: Remove when there's an alternative to WASD demos
-	telemSet(telemSpeedLimit, 60.0)
+	telemSet(telemSpeedLimit, kTelemSpeedLimitDefault)
 
 	gearDesired, _ = base.calculateGearDesired(ctx, accel)
 
