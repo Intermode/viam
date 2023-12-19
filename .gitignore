@@ -129,6 +129,5 @@ dmypy.json
 .pyre/
 
 # Binaries and executables
-modal_base_process/modal
 
 module.tar.gz
