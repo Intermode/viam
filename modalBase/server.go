@@ -39,6 +39,9 @@ func main() {
 	goutils.ContextualMain(mainWithArgs, golog.NewDevelopmentLogger("intermodeBaseModule"))
 }
 
+// Version number
+var version = "2.0.0"
+
 // /////////////
 // Telemetry //
 // /////////////
@@ -85,9 +88,10 @@ func telemGetAll() map[string]interface{} {
 // /////////////
 // Fail-Safe //
 // /////////////
+// TODO: Re-enable comms timeout after an alternative to WASD demos is available
 const commsTimeoutIntervalMs = 1000 // If it has been at least this long since last command received, execute containment
 var commsTimeout time.Time
-var commsTimeoutEnable = true		// Enable or disable comms timeout
+var commsTimeoutEnable = false		// Enable or disable comms timeout
 									// Presently changed based off of received command style
 
 func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err error) {
@@ -692,21 +696,45 @@ func (base *interModeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 	var ok = false
 	var gearDesired byte = 0x0
 	{
+		accel = linear.Y
+		// TODO: Move brake to a Do command
+		// brake = linear.X
+
+		// TODO: Use constant instead
+		// TODO: Remove when there's an alternative to WASD demos
+		telemSet(telemSpeedLimit, 60.0)
+
+		// TODO: Move to dedicated gear retrieval function and make more similar
+		// 	to a car (e.g., only allow changes when at low speed)
 		// If the desired gear got corrupted, default to emergency stop.
 		gearDesired, ok = telemGet(telemGearDesired).(byte)
 		if !ok {
 			gearDesired = gears[gearEmergencyStop]
+		} else {
+			// A negative acceleration means to move the opposite direction of
+			// 	the current gear
+			if 0 > accel {
+				if gears[gearReverse] == gearDesired {
+					gearDesired = gears[gearDrive]
+				} else {	// Default to reverse in case gearDesired is unset
+					gearDesired = gears[gearReverse]
+				}
+			} else {
+				if gears[gearDrive] == gearDesired {
+					gearDesired = gears[gearReverse]
+				} else {	// Default to drive in case gearDesired is unset
+					gearDesired = gears[gearDrive]
+				}
+			}
 		}
-
-		accel = linear.Y
-		brake = linear.X
 
 		base.isMoving.Store(telemGet(telemSpeed) != 0)
 	}
+	// TODO: Make steer angle actually calculated (const for WASD demo)
 	return base.setNextCommand(ctx, &driveCommand{
 		Accelerator:   accel,
 		Brake:         brake,
-		SteeringAngle: angular.Z * STEERANGLE_MAX,
+		SteeringAngle: angular.Z / math.Abs(angular.Z) * 0.75 * STEERANGLE_MAX,
 		Gear:          gearDesired,
 		SteerMode:     steerModes[steerModeFourWheelDrive],
 	})

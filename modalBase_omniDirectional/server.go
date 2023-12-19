@@ -36,6 +36,9 @@ func main() {
 	goutils.ContextualMain(mainWithArgs, golog.NewDevelopmentLogger("intermodeOmniBaseModule"))
 }
 
+// Version number
+var version = "1.0.0"
+
 // // /////////////
 // // Telemetry //
 // // /////////////
