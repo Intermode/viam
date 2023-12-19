@@ -3,12 +3,11 @@ module modal
 go 1.18
 
 require (
-	github.com/edaniels/golog v0.0.0-20230215213219-28954395e8d0
 	github.com/go-daq/canbus v0.2.0
 	github.com/golang/geo v0.0.0-20230421003525-6adc56603217
 	github.com/pkg/errors v0.9.1
 	go.viam.com/rdk v0.16.0
-	go.viam.com/utils v0.1.54
+	go.viam.com/utils v0.1.55
 	golang.org/x/sys v0.15.0
 )
 
@@ -31,6 +30,7 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0 // indirect
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
 	github.com/docker/go-units v0.5.0 // indirect
+	github.com/edaniels/golog v0.0.0-20230215213219-28954395e8d0 // indirect
 	github.com/edaniels/lidario v0.0.0-20220607182921-5879aa7b96dd // indirect
 	github.com/edaniels/zeroconf v1.0.10 // indirect
 	github.com/erikstmartin/go-testdb v0.0.0-20160219214506-8d10e4a1bae5 // indirect
@@ -97,7 +97,7 @@ require (
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/rs/cors v1.10.1 // indirect
 	github.com/sergi/go-diff v1.3.1 // indirect
-	github.com/smartystreets/assertions v1.13.1 // indirect
+	github.com/smartystreets/assertions v1.13.0 // indirect
 	github.com/srikrsna/protoc-gen-gotag v0.6.2 // indirect
 	github.com/stretchr/testify v1.8.4 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect

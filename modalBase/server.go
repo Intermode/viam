@@ -12,7 +12,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/edaniels/golog"
 	"github.com/go-daq/canbus"
 	"github.com/golang/geo/r3"
 	"github.com/pkg/errors"
@@ -22,9 +21,10 @@ import (
 
 	"go.viam.com/rdk/components/base"
 	_ "go.viam.com/rdk/components/generic"
-	"go.viam.com/rdk/config"
+	"go.viam.com/rdk/logging"
 	"go.viam.com/rdk/module"
 	"go.viam.com/rdk/resource"
+	"go.viam.com/rdk/spatialmath"
 )
 
 // Modal limits
@@ -35,7 +35,7 @@ const SPEED_LIMP_HOME = 20.0 // Max speed (throttle) if a limp home condition is
 var model = resource.NewModel("rdk", "builtin", "intermode")
 
 func main() {
-	goutils.ContextualMain(mainWithArgs, golog.NewDevelopmentLogger("intermodeBaseModule"))
+	goutils.ContextualMain(mainWithArgs, logging.NewDebugLogger("intermodeBaseModule"))
 }
 
 // Version number
@@ -93,13 +93,13 @@ var commsTimeout time.Time
 var commsTimeoutEnable = false		// Enable or disable comms timeout
 									// Presently changed based off of received command style
 
-func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err error) {
+func mainWithArgs(ctx context.Context, args []string, logger logging.Logger) (err error) {
 	registerBase()
 	modalModule, err := module.NewModuleFromArgs(ctx, logger)
 	if err != nil {
 		return err
 	}
-	modalModule.AddModelFromRegistry(ctx, base.Subtype, model)
+	modalModule.AddModelFromRegistry(ctx, base.API, model)
 
 	err = modalModule.Start(ctx)
 	defer modalModule.Close(ctx)
@@ -113,22 +113,31 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 
 // helper function to add the base's constructor and metadata to the component registry, so that we can later construct it.
 func registerBase() {
-	registry.RegisterComponent(
-		base.Subtype,
+	resource.RegisterComponent(
+		base.API,
 		model,
-		registry.Component{Constructor: func(
+		resource.Registration[resource.Resource, resource.NoNativeConfig]{Constructor: func(
 			ctx context.Context,
-			deps registry.Dependencies,
-			config config.Component,
-			logger golog.Logger,
-		) (interface{}, error) {
-			return newBase(config.Name, logger)
+			deps resource.Dependencies,
+			conf resource.Config,
+			logger logging.Logger,
+		) (resource.Resource, error) {
+			return newBase(conf, logger)
 		}})
 }
 
 // newBase creates a new base that underneath the hood sends canbus frames via
 // a 10ms publishing loop.
-func newBase(name string, logger golog.Logger) (base.Base, error) {
+func newBase(conf resource.Config, logger logging.Logger) (base.Base, error) {
+	var geometries = []spatialmath.Geometry{}
+	if conf.Frame != nil {
+		frame, err := conf.Frame.ParseConfig()
+		if err != nil {
+			return nil, err
+		}
+		geometries = append(geometries, frame.Geometry())
+	}
+
 	socketSend, err := canbus.New()
 	if err != nil {
 		return nil, err
@@ -158,14 +167,16 @@ func newBase(name string, logger golog.Logger) (base.Base, error) {
 	}
 
 	cancelCtx, cancel := context.WithCancel(context.Background())
-	iBase := &interModeBase{
-		name:          name,
-		headLightsOn:  true,
-		nextCommandCh: make(chan canbus.Frame),
-		cancel:        cancel,
-		logger:        logger,
+	iBase := &intermodeBase{
+		name:          	conf.Name,
+		nextCommandCh: 	make(chan canbus.Frame),
+		cancel:        	cancel,
+		logger:        	logger,
+		geometries:    	geometries,
+		Named:         	conf.ResourceName().AsNamed(),
 	}
 	iBase.isMoving.Store(false)
+	iBase.headLightsOn.Store(true)
 
 	iBase.activeBackgroundWorkers.Add(2)
 	viamutils.ManagedGo(func() {
@@ -192,6 +203,10 @@ const (
 	
 	kVehicleWheelbaseMm  = 680
 	kVehicleTrackwidthMm = 515
+
+	// Wheel properties
+	kWheelRadiusMm        float64 = 125
+	kWheelCircumferenceMm float64 = 2 * math.Pi * kWheelRadiusMm
 
 	kTelemSpeedLimitDefault = 60.0
 )
@@ -262,7 +277,7 @@ type lightCommand struct {
 	RightTurnSignal bool
 	LeftTurnSignal  bool
 	Hazards         bool
-	HeadLights      bool
+	HeadLights      atomic.Bool
 }
 
 type driveCommand struct {
@@ -328,11 +343,11 @@ func calculateAccelAndBrakeBytes(accelPct float64, brakePct float64) []byte {
 }
 
 type modalCommand interface {
-	toFrame(logger golog.Logger) canbus.Frame
+	toFrame(logger logging.Logger) canbus.Frame
 }
 
 // toFrame convert the light command to a canbus data frame.
-func (cmd *doorCommand) toFrame(logger golog.Logger) canbus.Frame {
+func (cmd *doorCommand) toFrame(logger logging.Logger) canbus.Frame {
 	frame := canbus.Frame{
 		ID:   cmd.DoorID,
 		Data: make([]byte, 0, 8),
@@ -353,7 +368,7 @@ func (cmd *doorCommand) toFrame(logger golog.Logger) canbus.Frame {
 }
 
 // toFrame convert the light command to a canbus data frame.
-func (cmd *lightCommand) toFrame(logger golog.Logger) canbus.Frame {
+func (cmd *lightCommand) toFrame(logger logging.Logger) canbus.Frame {
 	frame := canbus.Frame{
 		ID:   lightId,
 		Data: make([]byte, 0, 8),
@@ -371,7 +386,7 @@ func (cmd *lightCommand) toFrame(logger golog.Logger) canbus.Frame {
 	if cmd.Hazards {
 		cmdByte |= lightBits[hazards]
 	}
-	if cmd.HeadLights {
+	if cmd.HeadLights.Load() {
 		cmdByte |= lightBits[headLights]
 	}
 
@@ -382,7 +397,7 @@ func (cmd *lightCommand) toFrame(logger golog.Logger) canbus.Frame {
 }
 
 // toFrame convert the drive command to a canbus data frame.
-func (cmd *driveCommand) toFrame(logger golog.Logger) canbus.Frame {
+func (cmd *driveCommand) toFrame(logger logging.Logger) canbus.Frame {
 	frame := canbus.Frame{
 		ID:   driveId,
 		Data: make([]byte, 0, 8),
@@ -401,14 +416,23 @@ func (cmd *driveCommand) toFrame(logger golog.Logger) canbus.Frame {
 	return frame
 }
 
-type interModeBase struct {
-	name                    string
-	headLightsOn            bool
-	isMoving                atomic.Bool
+type intermodeBase struct {
+	resource.Named
+
+	trackWidthMm         float64
+	wheelCircumferenceMm float64
+	gearRatioInToOut     float64
+	geometries           []spatialmath.Geometry
+
+	name   string
+	logger logging.Logger
+
+	canTxSocket             canbus.Socket
 	nextCommandCh           chan canbus.Frame
+	isMoving                atomic.Bool
+	headLightsOn            atomic.Bool
 	activeBackgroundWorkers sync.WaitGroup
 	cancel                  func()
-	logger                  golog.Logger
 }
 
 // publishThread continuously sends the current drive command over the canbus.
@@ -416,7 +440,7 @@ func publishThread(
 	ctx context.Context,
 	socket canbus.Socket,
 	nextCommandCh chan canbus.Frame,
-	logger golog.Logger,
+	logger logging.Logger,
 ) {
 	defer socket.Close()
 	commsTimeout = time.Now().Add(commsTimeoutIntervalMs * time.Millisecond)
@@ -577,7 +601,7 @@ var (
 func receiveThread(
 	ctx context.Context,
 	socket canbus.Socket,
-	logger golog.Logger,
+	logger logging.Logger,
 ) {
 	defer socket.Close()
 
@@ -613,7 +637,7 @@ func receiveThread(
 */
 
 // MoveStraight moves the base forward the given distance and speed.
-func (base *interModeBase) MoveStraight(ctx context.Context, distanceMm int, mmPerSec float64, extra map[string]interface{}) error {
+func (base *intermodeBase) MoveStraight(ctx context.Context, distanceMm int, mmPerSec float64, extra map[string]interface{}) error {
 	cmd := driveCommand{
 		Accelerator:   0.5,
 		Brake:         0,
@@ -646,12 +670,12 @@ func (base *interModeBase) MoveStraight(ctx context.Context, distanceMm int, mmP
 // Converts linear and angular velocities to a steering angle
 //
 // Assumes that both velocities are in compatible units
-func (base *interModeBase) calculateSteerAngle(ctx context.Context, linearVelocity, angularVelocity float64) (float64, error) {
+func (base *intermodeBase) calculateSteerAngle(ctx context.Context, linearVelocity, angularVelocity float64) (float64, error) {
 	steerangle := math.Atan2(linearVelocity, angularVelocity * kVehicleWheelbaseMm)
 	return steerangle, nil
 }
 
-func (base *interModeBase) calculateGearDesired(ctx context.Context, accel float64) (byte, error) {
+func (base *intermodeBase) calculateGearDesired(ctx context.Context, accel float64) (byte, error) {
 	// TODO: Only allow changes when at low speed
 
 	// If the desired gear got corrupted, default to emergency stop.
@@ -680,7 +704,7 @@ func (base *interModeBase) calculateGearDesired(ctx context.Context, accel float
 }
 
 // Spin spins the base by the given angleDeg and degsPerSec.
-func (base *interModeBase) Spin(ctx context.Context, angleDeg, degsPerSec float64, extra map[string]interface{}) error {
+func (base *intermodeBase) Spin(ctx context.Context, angleDeg, degsPerSec float64, extra map[string]interface{}) error {
 	//TODO: make headlights and hazard persistent parts of the base
 	if err := base.setNextCommand(ctx, &lightCommand{
 		RightTurnSignal: angleDeg < 0,
@@ -722,7 +746,7 @@ func (base *interModeBase) Spin(ctx context.Context, angleDeg, degsPerSec float6
 
 
 // SetPower sets the linear and angular [-1, 1] drive power.
-func (base *interModeBase) SetPower(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
+func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
 	// Print received command
 	//	Not a debug message to avoid activating all of the debug messages
 	base.logger.Infow("SetPower with ",
@@ -790,7 +814,7 @@ func (base *interModeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 }
 
 // SetVelocity sets the linear (mmPerSec) and angular (degsPerSec) velocity.
-func (base *interModeBase) SetVelocity(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
+func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.Vector, extra map[string]interface{}) error {
 	//TODO: make headlights and hazard persistent parts of the base
 	if err := base.setNextCommand(ctx, &lightCommand{
 		RightTurnSignal: angular.Z < -30,
@@ -829,13 +853,13 @@ var emergencyCmd = driveCommand{
 }
 
 // Stop stops the base. It is assumed the base stops immediately.
-func (base *interModeBase) Stop(ctx context.Context, extra map[string]interface{}) error {
+func (base *intermodeBase) Stop(ctx context.Context, extra map[string]interface{}) error {
 	base.isMoving.Store(false)
 	return base.setNextCommand(ctx, &stopCmd)
 }
 
 // DoCommand executes additional commands beyond the Base{} interface. For this rover that includes door open and close commands.
-func (base *interModeBase) DoCommand(ctx context.Context, cmd map[string]interface{}) (map[string]interface{}, error) {
+func (base *intermodeBase) DoCommand(ctx context.Context, cmd map[string]interface{}) (map[string]interface{}, error) {
 	// TODO: expand this function to change steering/gearing modes.
 	name, ok := cmd["command"]
 	if !ok {
@@ -881,7 +905,7 @@ func (base *interModeBase) DoCommand(ctx context.Context, cmd map[string]interfa
 			return nil, errors.New("on value must be a boolean")
 		}
 
-		base.headLightsOn = on
+		base.headLightsOn.Store(on)
 		cmd := lightCommand{
 			RightTurnSignal: false,
 			LeftTurnSignal:  false,
@@ -937,17 +961,43 @@ func (base *interModeBase) DoCommand(ctx context.Context, cmd map[string]interfa
 	}
 }
 
-func (base *interModeBase) IsMoving(ctx context.Context) (bool, error) {
+func (i *intermodeBase) Geometries(ctx context.Context, extra map[string]interface{}) ([]spatialmath.Geometry, error) {
+	return i.geometries, nil
+}
+
+func (i *intermodeBase) Name() resource.Name {
+	return resource.Name{
+		API:    base.API,
+		Remote: "test",
+		Name:   "modal",
+	}
+}
+
+func (i *intermodeBase) Reconfigure(context.Context, resource.Dependencies, resource.Config) error {
+	return nil
+}
+
+func (i *intermodeBase) Properties(ctx context.Context, extra map[string]interface{}) (base.Properties, error) {
+	return base.Properties{
+		WidthMeters:              kVehicleTrackwidthMm / 1000.0,
+		WheelCircumferenceMeters: kWheelCircumferenceMm / 1000.0,
+	}, nil
+}
+
+func (base *intermodeBase) IsMoving(ctx context.Context) (bool, error) {
 	return base.isMoving.Load(), nil
 }
 
 // Close cleanly closes the base.
-func (base *interModeBase) Close() {
+func (base *intermodeBase) Close(ctx context.Context) error {
+	base.setNextCommand(ctx, &stopCmd)
 	base.cancel()
 	base.activeBackgroundWorkers.Wait()
+
+	return nil
 }
 
-func (base *interModeBase) setNextCommand(ctx context.Context, cmd modalCommand) error {
+func (base *intermodeBase) setNextCommand(ctx context.Context, cmd modalCommand) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
