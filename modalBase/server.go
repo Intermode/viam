@@ -671,7 +671,11 @@ func (base *intermodeBase) MoveStraight(ctx context.Context, distanceMm int, mmP
 //
 // Assumes that both velocities are in compatible units
 func (base *intermodeBase) calculateSteerAngle(ctx context.Context, linearVelocity, angularVelocity float64) (float64, error) {
-	steerangle := math.Atan2(linearVelocity, angularVelocity * kVehicleWheelbaseMm)
+	if(0 == angularVelocity) {
+		return 0, nil
+	} else {
+		steerangle := math.Atan2(linearVelocity, angularVelocity * kVehicleWheelbaseMm)
+	}
 	return steerangle, nil
 }
 
