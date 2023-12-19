@@ -770,8 +770,8 @@ func (base *interModeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 	brake = linear.X
 	steerAngle, _ = base.calculateSteerAngle(ctx, linear.Y, angular.Z)
 	// Convert to degrees and limit to the max steering angle
-	steerangle = STEERANGLE_MAX * steerangle
-	steerangle = math.Max(-STEERANGLE_MAX, math.Min(STEERANGLE_MAX, steerangle))
+	steerAngle = STEERANGLE_MAX * steerAngle
+	steerAngle = math.Max(-STEERANGLE_MAX, math.Min(STEERANGLE_MAX, steerAngle))
 
 	// TODO: Remove when there's an alternative to WASD demos
 	telemSet(telemSpeedLimit, kTelemSpeedLimitDefault)
