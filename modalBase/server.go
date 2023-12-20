@@ -220,9 +220,9 @@ const (
 	gearDrive         = "drive"
 	gearEmergencyStop = "emergency_stop"
 
-	steerModeFrontWheelDrive = "front-wheel-drive"
-	steerModeRearWheelDrive  = "rear-wheel-drive"
-	steerModeFourWheelDrive  = "four-wheel-drive"
+	steerModeFrontWheelSteer = "front-wheel-steer"
+	steerModeRearWheelSteer  = "rear-wheel-steer"
+	steerModeFourWheelSteer  = "four-wheel-steer"
 	steerModeCrabSteering    = "crab-steering"
 
 	rightTurnSignal = "right-turn-signal"
@@ -251,9 +251,9 @@ var (
 		gearEmergencyStop: 4,
 	}
 	steerModes = map[string]byte{
-		steerModeFrontWheelDrive: 0,
-		steerModeRearWheelDrive:  1,
-		steerModeFourWheelDrive:  2,
+		steerModeFrontWheelSteer: 0,
+		steerModeRearWheelSteer:  1,
+		steerModeFourWheelSteer:  2,
 		steerModeCrabSteering:    3,
 	}
 	lightBits = map[string]byte{
@@ -645,7 +645,7 @@ func (base *intermodeBase) MoveStraight(ctx context.Context, distanceMm int, mmP
 		Brake:         0,
 		SteeringAngle: 0,
 		Gear:          gears[gearDrive],
-		SteerMode:     steerModes[steerModeFourWheelDrive],
+		SteerMode:     steerModes[steerModeFourWheelSteer],
 	}
 
 	if mmPerSec < 0 || distanceMm < 0 {
@@ -714,7 +714,7 @@ func (base *intermodeBase) Spin(ctx context.Context, angleDeg, degsPerSec float6
 		Brake:         0,
 		SteeringAngle: angleDeg,
 		Gear:          gears[gearDrive],
-		SteerMode:     steerModes[steerModeFourWheelDrive],
+		SteerMode:     steerModes[steerModeFourWheelSteer],
 	}); err != nil {
 		return err
 	}
@@ -824,7 +824,7 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 		Brake:         0,
 		SteeringAngle: angular.Z * STEERANGLE_MAX,
 		Gear:          gears[gearDrive],
-		SteerMode:     steerModes[steerModeFourWheelDrive],
+		SteerMode:     steerModes[steerModeFourWheelSteer],
 	})
 }
 
@@ -833,7 +833,7 @@ var stopCmd = driveCommand{
 	Brake:         1,
 	SteeringAngle: 0,
 	Gear:          gears[gearPark],
-	SteerMode:     steerModes[steerModeFourWheelDrive],
+	SteerMode:     steerModes[steerModeFourWheelSteer],
 }
 
 var emergencyCmd = driveCommand{
@@ -841,7 +841,7 @@ var emergencyCmd = driveCommand{
 	Brake:         1,
 	SteeringAngle: 0,
 	Gear:          gears[gearEmergencyStop],
-	SteerMode:     steerModes[steerModeFourWheelDrive],
+	SteerMode:     steerModes[steerModeFourWheelSteer],
 }
 
 // Stop stops the base. It is assumed the base stops immediately.
