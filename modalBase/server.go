@@ -211,6 +211,7 @@ const (
 	kWheelCircumferenceMm float64 = 2 * math.Pi * kWheelRadiusMm
 
 	kTelemSpeedLimitDefault = 60.0
+	kLimitSpeedMaxKph = 10			// Max speed in KPH
 )
 
 const (
@@ -356,6 +357,14 @@ func calculateAccelAndBrakeBytes(accelPct float64, brakePct float64) []byte {
 	binary.LittleEndian.PutUint16(retBytes[0:2], accelBytes)
 	binary.LittleEndian.PutUint16(retBytes[2:4], brakeBytes)
 	return retBytes
+}
+
+type axleCommand struct {
+	canId         uint32
+	rightSpeed    float64
+	leftSpeed     float64
+	Brake         float64
+	SteeringAngle float64
 }
 
 type modalCommand interface {
@@ -838,15 +847,46 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 	gearDesired, _ = base.calculateGearDesired(ctx, accel)
 
 	base.isMoving.Store(telemGet(telemSpeed) != 0)
+	
+	// Convert power percentage to KPH
+	//	Temporary until the base can handle power directly
+	kphDes := accel * kLimitSpeedMaxKph
 
-	// TODO: Make steer angle actually calculated (const for WASD demo)
-	return base.setNextCommand(ctx, &driveCommand{
-		Accelerator:   accel,
-		Brake:         brake,
-		SteeringAngle: steerAngle,
-		Gear:          gearDesired,
-		SteerMode:     steerModes[steerModeFourWheelDrive],
-	})
+	var driveCmd = driveCommand{
+		Accelerator:   	0,
+		Brake:         	brake,
+		SteeringAngle:	steerAngle,
+		Gear:          	gearDesired,
+		DriveMode:     	driveModes[driveModeIndKph],
+		SteerMode:     	steerModes[steerModeFourWheelSteer],
+	}
+	var axleCmd = axleCommand{
+		rightSpeed:    kphDes,
+		leftSpeed:     kphDes,
+		Brake:         0.0,
+		SteeringAngle: 0.0,
+	}
+	var frontCmd, rearCmd = axleCmd, axleCmd
+
+	// TODO: Switch to actually using speed instead of a percentage
+	//		 Currently treating this as an Aped command at the base side
+	frontCmd.canId = kulCanIdCmdAxleF
+	rearCmd.canId = kulCanIdCmdAxleR
+
+	if err := base.setNextCommand(ctx, &driveCmd); err != nil {
+		base.logger.Errorw("Error setting SetPower command", "error", err)
+		return err
+	}
+	if err := base.setNextCommand(ctx, &frontCmd); err != nil {
+		base.logger.Errorw("Error setting SetPower command", "error", err)
+		return err
+	}
+	if err := base.setNextCommand(ctx, &rearCmd); err != nil {
+		base.logger.Errorw("Error setting SetPower command", "error", err)
+		return err
+	}
+
+	return nil
 }
 
 // SetVelocity sets the linear (mmPerSec) and angular (degsPerSec) velocity.
