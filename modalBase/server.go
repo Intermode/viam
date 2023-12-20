@@ -29,7 +29,7 @@ import (
 
 // Modal limits
 const PEDAL_MAX = 100.0
-const STEERANGLE_MAX = 25.0
+const STEERANGLE_MAX = 55.0
 const SPEED_LIMP_HOME = 20.0 // Max speed (throttle) if a limp home condition is active
 
 var model = resource.NewModel("intermode", "modal", "ackermann")
