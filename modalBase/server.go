@@ -225,6 +225,12 @@ const (
 	steerModeFourWheelSteer  = "four-wheel-steer"
 	steerModeCrabSteering    = "crab-steering"
 
+	driveModeFourWheelDrive  = "four-wheel-drive"
+	driveModeFrontWheelDrive = "front-wheel-drive"
+	driveModeRearWheelDrive  = "rear-wheel-drive"
+	driveModeIndAped         = "independent-aped-drive"
+	driveModeIndKph          = "independent-kph-drive"
+
 	rightTurnSignal = "right-turn-signal"
 	leftTurnSignal  = "left-turn-signal"
 	hazards         = "hazards"
@@ -255,6 +261,13 @@ var (
 		steerModeRearWheelSteer:  1,
 		steerModeFourWheelSteer:  2,
 		steerModeCrabSteering:    3,
+	}
+	driveModes = map[string]byte{
+		driveModeFourWheelDrive:  0,
+		driveModeFrontWheelDrive: 1,
+		driveModeRearWheelDrive:  2,
+		driveModeIndAped:         3,
+		driveModeIndKph:          4,
 	}
 	lightBits = map[string]byte{
 		// the spec sheet states the right and left swap, but this appeared backwards on my modal
@@ -287,6 +300,7 @@ type driveCommand struct {
 	Brake         float64
 	SteeringAngle float64
 	Gear          byte
+	DriveMode     byte
 	SteerMode     byte
 }
 
@@ -398,22 +412,50 @@ func (cmd *lightCommand) toFrame(logger logging.Logger) canbus.Frame {
 	return frame
 }
 
-// toFrame convert the drive command to a canbus data frame.
+/*
+ * Convert a drive command to a CAN frame
+ */
 func (cmd *driveCommand) toFrame(logger logging.Logger) canbus.Frame {
 	frame := canbus.Frame{
 		ID:   kulCanIdCmdDrive,
 		Data: make([]byte, 0, 8),
 		Kind: canbus.SFF,
 	}
-	frame.Data = append(frame.Data, calculateAccelAndBrakeBytes(cmd.Accelerator, cmd.Brake)...)
-	frame.Data = append(frame.Data, calculateSteeringAngleBytes(cmd.SteeringAngle)...)
-	// is this the best place to be setting the gear to reverse? felt better than in each place that sets the forward motion.
-	if cmd.Accelerator < 0 {
-		cmd.Gear = gears[gearReverse]
-	}
-	frame.Data = append(frame.Data, cmd.Gear, cmd.SteerMode)
 
-	logger.Debugw("frame", "data", frame.Data)
+	steeringAngleBytes := make([]byte, 2)
+	binary.LittleEndian.PutUint16(steeringAngleBytes, 0)
+
+	frame.Data = append(frame.Data, calculateAccelAndBrakeBytes(cmd.Accelerator, cmd.Brake)...)
+	frame.Data = append(frame.Data, steeringAngleBytes...) // Steering hard-coded to 0 as turning is handled by the wheels
+	frame.Data = append(frame.Data, cmd.Gear|(cmd.DriveMode<<4), cmd.SteerMode)
+
+	// logger.Debugw("frame", "data", frame.Data)
+
+	return frame
+}
+
+/*
+ * Convert an axle command to a CAN frame
+ */
+func (cmd *axleCommand) toFrame(logger logging.Logger) canbus.Frame {
+	frame := canbus.Frame{
+		ID:   cmd.canId,
+		Data: make([]byte, 8),
+		Kind: canbus.SFF,
+	}
+
+	// TODO: Remove magic number scalars
+	rightSpeedBytes := uint16(cmd.rightSpeed / 0.0078125)
+	leftSpeedBytes := uint16(cmd.leftSpeed / 0.0078125)
+	brakeBytes := uint16(cmd.Brake / 0.0625)
+	steeringAngleBytes := uint16(cmd.SteeringAngle / 0.0078125)
+
+	binary.LittleEndian.PutUint16(frame.Data[0:2], rightSpeedBytes)
+	binary.LittleEndian.PutUint16(frame.Data[2:4], leftSpeedBytes)
+	binary.LittleEndian.PutUint16(frame.Data[4:6], brakeBytes)
+	binary.LittleEndian.PutUint16(frame.Data[6:8], steeringAngleBytes)
+
+	// logger.Debugw("frame", "data", frame.Data)
 
 	return frame
 }
@@ -645,6 +687,7 @@ func (base *intermodeBase) MoveStraight(ctx context.Context, distanceMm int, mmP
 		Brake:         0,
 		SteeringAngle: 0,
 		Gear:          gears[gearDrive],
+		DriveMode:     driveModes[driveModeFourWheelDrive],
 		SteerMode:     steerModes[steerModeFourWheelSteer],
 	}
 
@@ -714,6 +757,7 @@ func (base *intermodeBase) Spin(ctx context.Context, angleDeg, degsPerSec float6
 		Brake:         0,
 		SteeringAngle: angleDeg,
 		Gear:          gears[gearDrive],
+		DriveMode:     driveModes[driveModeFourWheelDrive],
 		SteerMode:     steerModes[steerModeFourWheelSteer],
 	}); err != nil {
 		return err
@@ -824,6 +868,7 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 		Brake:         0,
 		SteeringAngle: angular.Z * STEERANGLE_MAX,
 		Gear:          gears[gearDrive],
+		DriveMode:     driveModes[driveModeFourWheelDrive],
 		SteerMode:     steerModes[steerModeFourWheelSteer],
 	})
 }
@@ -833,6 +878,7 @@ var stopCmd = driveCommand{
 	Brake:         1,
 	SteeringAngle: 0,
 	Gear:          gears[gearPark],
+	DriveMode:     driveModes[driveModeFourWheelDrive],
 	SteerMode:     steerModes[steerModeFourWheelSteer],
 }
 
@@ -841,6 +887,7 @@ var emergencyCmd = driveCommand{
 	Brake:         1,
 	SteeringAngle: 0,
 	Gear:          gears[gearEmergencyStop],
+	DriveMode:     driveModes[driveModeFourWheelDrive],
 	SteerMode:     steerModes[steerModeFourWheelSteer],
 }
 
