@@ -431,11 +431,8 @@ func (cmd *driveCommand) toFrame(logger logging.Logger) canbus.Frame {
 		Kind: canbus.SFF,
 	}
 
-	steeringAngleBytes := make([]byte, 2)
-	binary.LittleEndian.PutUint16(steeringAngleBytes, 0)
-
 	frame.Data = append(frame.Data, calculateAccelAndBrakeBytes(cmd.Accelerator, cmd.Brake)...)
-	frame.Data = append(frame.Data, steeringAngleBytes...) // Steering hard-coded to 0 as turning is handled by the wheels
+	frame.Data = append(frame.Data, calculateSteeringAngleBytes(cmd.SteeringAngle)...)
 	frame.Data = append(frame.Data, cmd.Gear|(cmd.DriveMode<<4), cmd.SteerMode)
 
 	// logger.Debugw("frame", "data", frame.Data)
