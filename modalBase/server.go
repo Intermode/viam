@@ -192,8 +192,10 @@ func newBase(conf resource.Config, logger logging.Logger) (base.Base, error) {
 // constants from the data sheet.
 const (
 	channel        = "can0"
-	driveId uint32 = 0x220
-	lightId uint32 = 0x260
+	kulCanIdCmdDrive uint32 = 0x220
+	kulCanIdCmdAxleF uint32 = 0x222
+	kulCanIdCmdAxleR uint32 = 0x223
+	kulCanIdCmdLight uint32 = 0x260
 
 	// Telemetry
 	telemDriveId        uint32 = 0x240
@@ -370,7 +372,7 @@ func (cmd *doorCommand) toFrame(logger logging.Logger) canbus.Frame {
 // toFrame convert the light command to a canbus data frame.
 func (cmd *lightCommand) toFrame(logger logging.Logger) canbus.Frame {
 	frame := canbus.Frame{
-		ID:   lightId,
+		ID:   kulCanIdCmdLight,
 		Data: make([]byte, 0, 8),
 		Kind: canbus.SFF,
 	}
@@ -399,7 +401,7 @@ func (cmd *lightCommand) toFrame(logger logging.Logger) canbus.Frame {
 // toFrame convert the drive command to a canbus data frame.
 func (cmd *driveCommand) toFrame(logger logging.Logger) canbus.Frame {
 	frame := canbus.Frame{
-		ID:   driveId,
+		ID:   kulCanIdCmdDrive,
 		Data: make([]byte, 0, 8),
 		Kind: canbus.SFF,
 	}
@@ -455,7 +457,7 @@ func publishThread(
 		select {
 		case <-ctx.Done():
 		case frame = <-nextCommandCh:
-			if frame.ID == driveId {
+			if frame.ID == kulCanIdCmdDrive {
 				// new drive command will replace the existing drive command and be sent every 10ms.
 				driveFrame = frame
 				commsTimeout = time.Now().Add(commsTimeoutIntervalMs * time.Millisecond)
