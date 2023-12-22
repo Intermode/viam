@@ -387,7 +387,7 @@ func (cmd *doorCommand) toFrame(logger logging.Logger) canbus.Frame {
 	}
 
 	frame.Data = append(frame.Data, cmdByte)
-	logger.Debugw("frame", "data", frame.Data)
+	// logger.Debugw("frame", "data", frame.Data)
 
 	return frame
 }
@@ -416,7 +416,7 @@ func (cmd *lightCommand) toFrame(logger logging.Logger) canbus.Frame {
 	}
 
 	frame.Data = append(frame.Data, cmdByte)
-	logger.Debugw("frame", "data", frame.Data)
+	// logger.Debugw("frame", "data", frame.Data)
 
 	return frame
 }
