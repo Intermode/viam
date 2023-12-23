@@ -32,6 +32,9 @@ const PEDAL_MAX = 100.0
 const STEERANGLE_MAX = 55.0
 const SPEED_LIMP_HOME = 20.0 // Max speed (throttle) if a limp home condition is active
 
+// TODO: Make this configurable
+const STEERING_OFFSET = -5.0 // Steering angle offset to account for homing error
+
 var model = resource.NewModel("intermode", "modal", "ackermann")
 
 func main() {
@@ -836,7 +839,7 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 	// TODO: Move brake to a Do command
 	brake = linear.X
 	// TODO: Properly use vectors
-	steerAngle = STEERANGLE_MAX * angular.Z
+	steerAngle = STEERANGLE_MAX * angular.Z + STEERING_OFFSET
 
 	// TODO: Remove when there's an alternative to WASD demos
 	telemSet(telemSpeedLimit, kTelemSpeedLimitDefault)
