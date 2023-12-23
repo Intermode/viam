@@ -390,7 +390,7 @@ func (cmd *doorCommand) toFrame(logger logging.Logger) canbus.Frame {
 	}
 
 	frame.Data = append(frame.Data, cmdByte)
-	logger.Debugw("frame", "data", frame.Data)
+	// logger.Debugw("frame", "data", frame.Data)
 
 	return frame
 }
@@ -419,7 +419,7 @@ func (cmd *lightCommand) toFrame(logger logging.Logger) canbus.Frame {
 	}
 
 	frame.Data = append(frame.Data, cmdByte)
-	logger.Debugw("frame", "data", frame.Data)
+	// logger.Debugw("frame", "data", frame.Data)
 
 	return frame
 }
@@ -499,6 +499,7 @@ func publishThread(
 	commsTimeout = time.Now().Add(commsTimeoutIntervalMs * time.Millisecond)
 
 	driveFrame := (&stopCmd).toFrame(logger)
+	var axleFFrame, axleRFrame canbus.Frame
 	var frame canbus.Frame
 
 	for {
@@ -512,6 +513,10 @@ func publishThread(
 				// new drive command will replace the existing drive command and be sent every 10ms.
 				driveFrame = frame
 				commsTimeout = time.Now().Add(commsTimeoutIntervalMs * time.Millisecond)
+			} else if frame.ID == kulCanIdCmdAxleF {
+				axleFFrame = frame
+			} else if frame.ID == kulCanIdCmdAxleR {
+				axleRFrame = frame
 			} else {
 				// non-drive commands should be sent immediately, but retain current drive command for base heartbeating.
 				if _, err := socket.Send(frame); err != nil {
@@ -525,6 +530,12 @@ func publishThread(
 		}
 		if _, err := socket.Send(driveFrame); err != nil {
 			logger.Errorw("drive command send error", "error", err)
+		}
+		if _, err := socket.Send(axleFFrame); err != nil {
+			logger.Errorw("front axle command send error", "error", err)
+		}
+		if _, err := socket.Send(axleRFrame); err != nil {
+			logger.Errorw("rear axle command send error", "error", err)
 		}
 	}
 }
