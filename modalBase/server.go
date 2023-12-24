@@ -705,7 +705,7 @@ func (base *intermodeBase) MoveStraight(ctx context.Context, distanceMm int, mmP
 	cmd := driveCommand{
 		Accelerator:   0.5,
 		Brake:         0,
-		SteeringAngle: 0,
+		SteeringAngle: STEERING_OFFSET,
 		Gear:          gears[gearDrive],
 		DriveMode:     driveModes[driveModeFourWheelDrive],
 		SteerMode:     steerModes[steerModeFourWheelSteer],
@@ -772,10 +772,13 @@ func (base *intermodeBase) Spin(ctx context.Context, angleDeg, degsPerSec float6
 		return err
 	}
 
+	steer_angle := angleDeg + STEERING_OFFSET
+	steer_angle = math.Min(math.Max(steer_angle, -STEERANGLE_MAX), STEERANGLE_MAX)
+
 	if err := base.setNextCommand(ctx, &driveCommand{
 		Accelerator:   0.5,
 		Brake:         0,
-		SteeringAngle: angleDeg,
+		SteeringAngle: steer_angle,
 		Gear:          gears[gearDrive],
 		DriveMode:     driveModes[driveModeFourWheelDrive],
 		SteerMode:     steerModes[steerModeFourWheelSteer],
@@ -915,10 +918,13 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 
 	// if any component of either vector isnt 0, we're moving!
 	base.isMoving.Store(linear.X != 0 || linear.Y != 0 || linear.Z != 0 || angular.X != 0 || angular.Y != 0 || angular.Z != 0)
+	steer_angle := STEERANGLE_MAX * angular.Z + STEERING_OFFSET
+	steer_angle = math.Min(math.Max(steer_angle, -STEERANGLE_MAX), STEERANGLE_MAX)
+	
 	return base.setNextCommand(ctx, &driveCommand{
 		Accelerator:   linear.Y,
 		Brake:         0,
-		SteeringAngle: angular.Z * STEERANGLE_MAX,
+		SteeringAngle: steer_angle,
 		Gear:          gears[gearDrive],
 		DriveMode:     driveModes[driveModeFourWheelDrive],
 		SteerMode:     steerModes[steerModeFourWheelSteer],
@@ -928,7 +934,7 @@ func (base *intermodeBase) SetVelocity(ctx context.Context, linear, angular r3.V
 var stopCmd = driveCommand{
 	Accelerator:   0,
 	Brake:         1,
-	SteeringAngle: 0,
+	SteeringAngle: STEERING_OFFSET,
 	Gear:          gears[gearPark],
 	DriveMode:     driveModes[driveModeFourWheelDrive],
 	SteerMode:     steerModes[steerModeFourWheelSteer],
@@ -937,7 +943,7 @@ var stopCmd = driveCommand{
 var emergencyCmd = driveCommand{
 	Accelerator:   0,
 	Brake:         1,
-	SteeringAngle: 0,
+	SteeringAngle: STEERING_OFFSET,
 	Gear:          gears[gearEmergencyStop],
 	DriveMode:     driveModes[driveModeFourWheelDrive],
 	SteerMode:     steerModes[steerModeFourWheelSteer],
