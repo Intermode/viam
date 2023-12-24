@@ -851,6 +851,7 @@ func (base *intermodeBase) SetPower(ctx context.Context, linear, angular r3.Vect
 	brake = linear.X
 	// TODO: Properly use vectors
 	steerAngle = STEERANGLE_MAX * angular.Z + STEERING_OFFSET
+	steerAngle = math.Min(math.Max(steerAngle, -STEERANGLE_MAX), STEERANGLE_MAX)
 
 	// TODO: Remove when there's an alternative to WASD demos
 	telemSet(telemSpeedLimit, kTelemSpeedLimitDefault)
